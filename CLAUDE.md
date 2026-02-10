@@ -17,7 +17,7 @@ idalib is loaded automatically from `IDA_INSTALL_DIR/idalib/python/` at startup.
 - `session.py` — idalib lifecycle (imports `idapro` at module level — must be first)
 - `executor.py` — `exec()` with persistent namespace and stdout/stderr capture
 - `doc_search.py` — keyword search over IDA docs + Python API sources
-- `server.py` — FastMCP server with 3 tools: `open_database`, `execute`, `search_docs`
+- `server.py` — FastMCP server with 4 tools: `open_database`, `execute`, `execute_file`, `search_docs`
 
 `__init__.py` imports `session` first to ensure `idapro` is loaded before any `ida_*` modules.
 
