@@ -1,5 +1,19 @@
 import atexit
 import enum
+import os
+import sys
+
+from ida_code.config import IDA_INSTALL_DIR
+
+# Add idalib's Python package to sys.path so `idapro` can be imported
+# without requiring manual `pip install`.
+_idalib_python = IDA_INSTALL_DIR / "idalib" / "python"
+if _idalib_python.is_dir() and str(_idalib_python) not in sys.path:
+    sys.path.insert(0, str(_idalib_python))
+
+# Set IDADIR so idapro finds the IDA install directory
+# without requiring `py-activate-idalib.py`.
+os.environ.setdefault("IDADIR", str(IDA_INSTALL_DIR))
 
 import idapro
 

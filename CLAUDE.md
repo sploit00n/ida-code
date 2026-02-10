@@ -9,7 +9,7 @@ uv sync                    # install dependencies
 uv run ida-code            # run the server (stdio transport)
 ```
 
-idalib must be installed first: `pip install /opt/ida-pro-9.2/idalib/python/`
+idalib is loaded automatically from `IDA_INSTALL_DIR/idalib/python/` at startup.
 
 ## Architecture
 
@@ -25,5 +25,5 @@ idalib must be installed first: `pip install /opt/ida-pro-9.2/idalib/python/`
 
 - **Single-threaded**: idalib only supports one database at a time, all calls from the same thread
 - **idapro import order**: `import idapro` must happen before any `ida_*` imports
-- **Runtime dependency**: `idapro` is not in pyproject.toml — it's installed separately from the IDA installation
+- **Runtime dependency**: `idapro` is not in pyproject.toml — it's auto-imported from `IDA_INSTALL_DIR/idalib/python/` at startup
 - **fastmcp**: Using the community `fastmcp` package (`from fastmcp import FastMCP`), not the official SDK's `mcp.server.fastmcp`
