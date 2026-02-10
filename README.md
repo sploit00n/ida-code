@@ -113,6 +113,32 @@ for caller in xrefs_to("_objc_msgSend"):
     print(f"{caller:#x} {ida_funcs.get_func_name(caller)}")
 ```
 
+### `execute_file`
+
+Runs an IDAPython script file by path. Useful for executing existing analysis scripts without pasting their contents.
+
+**Parameters:**
+- `path` (str) — Path to the `.py` script file
+- `args` (str, optional) — Inline code to run after the file, in the same namespace
+
+**Key behaviors:**
+- Same persistent namespace and pre-imported modules as `execute`
+- File is read with lenient encoding (undecodable bytes replaced)
+- When `args` is provided, it runs after the file — useful for calling functions the script defines
+
+**Example calls:**
+
+Run a script:
+```python
+# Executes /path/to/enumerate_strings.py
+```
+
+Run a script then call a function it defines:
+```python
+# path: /path/to/helpers.py
+# args: print(analyze_function(0x3f08))
+```
+
 ### `search_docs`
 
 Searches IDA's bundled documentation and Python API source files. Useful for looking up API signatures, finding the right function for a task, or reading usage examples.
@@ -148,7 +174,7 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py          FastMCP server — 3 tool definitions, stdio transport
+server.py          FastMCP server — 4 tool definitions, stdio transport
     ├── session.py     idalib lifecycle — open/close database, state machine
     ├── executor.py    exec() engine — persistent namespace, output capture
     ├── doc_search.py  keyword search — HTML docs + Python API sources

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastmcp import FastMCP
 
 from ida_code import session
@@ -29,6 +31,33 @@ def execute(code: str) -> str:
     """
     if session.get_state() == session.State.NO_DATABASE:
         return "Error: No database is open. Call open_database first."
+    return _execute(code)
+
+
+@mcp.tool
+def execute_file(path: str, args: str | None = None) -> str:
+    """Execute an IDAPython script file and return captured output.
+
+    Reads the file at `path` and executes it. Optionally, `args` provides
+    inline code that runs after the file in the same namespace — useful for
+    calling functions defined in the script or inspecting results.
+
+    The execution namespace persists across calls, same as `execute`.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        return "Error: No database is open. Call open_database first."
+
+    p = Path(path)
+    if not p.is_file():
+        return f"Error: File not found: {path}"
+    try:
+        code = p.read_text(errors="replace")
+    except OSError as e:
+        return f"Error: Could not read file: {e}"
+
+    if args:
+        code = code + "\n" + args
+
     return _execute(code)
 
 
