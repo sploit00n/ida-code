@@ -12,21 +12,12 @@ Built on [idalib](https://docs.hex-rays.com/developer-guide/idalib) for headless
 
 ## Installation
 
-### 1. Activate idalib
-
-idalib must be installed into your Python environment before ida-code can run:
-
-```bash
-pip install /opt/ida-pro-9.2/idalib/python/
-python /opt/ida-pro-9.2/py-activate-idalib.py
-```
-
-### 2. Install ida-code
-
 ```bash
 cd /path/to/ida-code
 uv sync
 ```
+
+idalib is loaded automatically from `IDA_INSTALL_DIR/idalib/python/` at startup — no manual `pip install` or `py-activate-idalib.py` needed.
 
 ## Configuration
 
