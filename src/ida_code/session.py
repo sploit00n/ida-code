@@ -30,13 +30,16 @@ def get_state() -> State:
     return _state
 
 
-def open(path: str, auto_analysis: bool = True) -> str:
+def open(path: str, auto_analysis: bool = True, overwrite: bool = False) -> str:
     """Open a binary/database via idalib. Returns a summary string."""
     global _state
 
     # Close any existing database first.
     if _state == State.DATABASE_OPEN:
         close()
+
+    if overwrite:
+        _remove_existing_databases(path)
 
     rc = idapro.open_database(path, auto_analysis)
     if rc != 0:
@@ -95,12 +98,24 @@ def _collect_summary(path: str) -> str:
     return "\n".join(lines)
 
 
+def _remove_existing_databases(path: str) -> None:
+    """Remove existing IDA database files so a fresh analysis starts."""
+    from pathlib import Path
+    p = Path(path)
+    for ext in (".i64", ".idb"):
+        for candidate in {p.with_suffix(ext), Path(str(p) + ext)}:
+            if candidate.is_file():
+                candidate.unlink()
+
+
 def close() -> None:
     """Close the current database."""
     global _state
     if _state == State.DATABASE_OPEN:
         idapro.close_database()
         _state = State.NO_DATABASE
+        from ida_code.executor import reset
+        reset()
 
 
 @atexit.register
