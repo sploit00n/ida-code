@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastmcp import FastMCP
 
+from ida_code import guidelines as _guidelines
 from ida_code import session
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
@@ -10,13 +11,28 @@ mcp = FastMCP("ida-code")
 
 
 @mcp.tool
-def open_database(path: str, auto_analysis: bool = True) -> str:
+def open_database(path: str, auto_analysis: bool = True, overwrite: bool = False) -> str:
     """Open a binary or IDA database via idalib.
 
     Returns summary info (architecture, segments, entry points, function count).
     If a database is already open, it is closed first.
+
+    Set overwrite=True to delete any existing .i64/.idb database and force
+    a fresh analysis from the original binary.
     """
-    return session.open(path, auto_analysis)
+    return session.open(path, auto_analysis, overwrite)
+
+
+@mcp.tool
+def close_database() -> str:
+    """Close the current database and free resources.
+
+    The executor namespace is cleared. No database will be open after this call.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        return "No database is currently open."
+    session.close()
+    return "Database closed."
 
 
 @mcp.tool
@@ -72,6 +88,15 @@ def search_docs(query: str, max_results: int = 10) -> str:
     Returns matching snippets with source attribution.
     """
     return _search_docs(query, max_results)
+
+
+@mcp.resource("guidelines://{target}")
+def coding_guidelines(target: str) -> str:
+    """Coding guidelines and templates for IDAPython development.
+
+    Available targets: standalone_script, plugin, idapython_script.
+    """
+    return _guidelines.get(target)
 
 
 def main():

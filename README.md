@@ -56,6 +56,7 @@ Opens a binary or existing IDA database. If a database is already open, it's clo
 **Parameters:**
 - `path` (str) — Path to binary or `.i64`/`.idb` file
 - `auto_analysis` (bool, default `True`) — Wait for auto-analysis to complete
+- `overwrite` (bool, default `False`) — Delete any existing `.i64`/`.idb` database before opening, forcing a fresh analysis from the original binary
 
 **Returns:** Summary with processor type, bitness, segment list, entry points, and function count.
 
@@ -72,6 +73,12 @@ Segments (4):
 Entry points (1):
   _main: 0x3f08
 ```
+
+### `close_database`
+
+Closes the current database and frees resources. The executor namespace is cleared. Safe to call when no database is open (returns a no-op message).
+
+**Parameters:** None.
 
 ### `execute`
 
@@ -163,6 +170,16 @@ def get_func_name(ea: ida_idaapi.ea_t) ->str:
     :returns: length of the function name"""
 ```
 
+## Resources
+
+MCP Resources provide coding guidelines and templates for writing IDAPython code. Read them via your MCP client's resource browsing capability.
+
+| URI | Description |
+|-----|-------------|
+| `guidelines://standalone_script` | Standalone idalib scripts — bootstrap, lifecycle, patterns |
+| `guidelines://plugin` | IDA plugins — `plugin_t` subclass, actions, hooks |
+| `guidelines://idapython_script` | Classic IDAPython scripts — in-GUI scripts via File > Script File |
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -174,10 +191,11 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py          FastMCP server — 4 tool definitions, stdio transport
+server.py          FastMCP server — 5 tools + 3 resources, stdio transport
     ├── session.py     idalib lifecycle — open/close database, state machine
     ├── executor.py    exec() engine — persistent namespace, output capture
     ├── doc_search.py  keyword search — HTML docs + Python API sources
+    ├── guidelines.py  coding templates — standalone scripts, plugins, IDAPython scripts
     └── config.py      environment-based configuration
 ```
 

@@ -2,7 +2,7 @@
 
 ## High Priority
 
-- [ ] Add `close_database` as an explicit tool (currently only implicit close-on-open)
+- [x] Add `close_database` as an explicit tool (currently only implicit close-on-open)
 - [ ] Handle `open_database` timeout — large binaries with auto-analysis can take minutes
 - [ ] Add progress feedback during auto-analysis (idalib callbacks or polling)
 - [ ] Test with `.i64` / `.idb` files (not just raw binaries)
