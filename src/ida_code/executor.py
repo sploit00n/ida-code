@@ -80,6 +80,9 @@ def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
         exec(code, _namespace)
     except _Timeout:
         stderr_capture.write(f"\n\nExecution timed out after {timeout} seconds.")
+    except (KeyboardInterrupt, SystemExit) as exc:
+        stderr_capture.write(f"\n\n{type(exc).__name__} intercepted — the server is still running.\n")
+        stderr_capture.write(traceback.format_exc())
     except Exception:
         stderr_capture.write(traceback.format_exc())
     finally:
