@@ -36,7 +36,7 @@ def close_database() -> str:
 
 
 @mcp.tool
-def execute(code: str) -> str:
+def execute(code: str, timeout: int = 30) -> str:
     """Execute IDAPython code and return captured output.
 
     The execution namespace persists across calls — variables and functions defined
@@ -44,14 +44,16 @@ def execute(code: str) -> str:
     pre-imported (ida_funcs, ida_bytes, ida_name, idautils, idc, etc.).
 
     Python tracebacks are returned as normal output for debugging.
+
+    *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
     """
     if session.get_state() == session.State.NO_DATABASE:
         return "Error: No database is open. Call open_database first."
-    return _execute(code)
+    return _execute(code, timeout=timeout)
 
 
 @mcp.tool
-def execute_file(path: str, args: str | None = None) -> str:
+def execute_file(path: str, args: str | None = None, timeout: int = 30) -> str:
     """Execute an IDAPython script file and return captured output.
 
     Reads the file at `path` and executes it. Optionally, `args` provides
@@ -59,6 +61,8 @@ def execute_file(path: str, args: str | None = None) -> str:
     calling functions defined in the script or inspecting results.
 
     The execution namespace persists across calls, same as `execute`.
+
+    *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
     """
     if session.get_state() == session.State.NO_DATABASE:
         return "Error: No database is open. Call open_database first."
@@ -74,7 +78,7 @@ def execute_file(path: str, args: str | None = None) -> str:
     if args:
         code = code + "\n" + args
 
-    return _execute(code)
+    return _execute(code, timeout=timeout)
 
 
 @mcp.tool
@@ -90,13 +94,22 @@ def search_docs(query: str, max_results: int = 10) -> str:
     return _search_docs(query, max_results)
 
 
-@mcp.resource("guidelines://{target}")
-def coding_guidelines(target: str) -> str:
-    """Coding guidelines and templates for IDAPython development.
+@mcp.resource("guidelines://standalone_script")
+def standalone_script_guidelines() -> str:
+    """Architecture and boilerplate for standalone idalib scripts."""
+    return _guidelines.get("standalone_script")
 
-    Available targets: standalone_script, plugin, idapython_script.
-    """
-    return _guidelines.get(target)
+
+@mcp.resource("guidelines://plugin")
+def plugin_guidelines() -> str:
+    """Architecture and boilerplate for IDA plugins (idaapi.plugin_t)."""
+    return _guidelines.get("plugin")
+
+
+@mcp.resource("guidelines://idapython_script")
+def idapython_script_guidelines() -> str:
+    """Architecture and boilerplate for IDAPython scripts run inside IDA GUI."""
+    return _guidelines.get("idapython_script")
 
 
 def main():

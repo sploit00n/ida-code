@@ -86,12 +86,14 @@ Runs arbitrary IDAPython code and returns captured stdout + stderr. This is the 
 
 **Parameters:**
 - `code` (str) — IDAPython code to execute
+- `timeout` (int, default `30`) — Maximum wall-clock seconds (0 = unlimited)
 
 **Key behaviors:**
 - **Persistent namespace** — Variables and functions defined in one call carry over to the next. Build up helper functions incrementally.
 - **Pre-imported modules** — `ida_funcs`, `ida_bytes`, `ida_name`, `ida_segment`, `idautils`, `idc`, `ida_hexrays`, and more. No boilerplate needed.
 - **Tracebacks as output** — Errors are returned as text, not MCP errors. They're useful feedback for the agent to self-correct.
 - **Output truncation** — Capped at 50K characters with a note when truncated.
+- **Timeout protection** — Code that runs longer than the timeout is interrupted and an error message is returned instead of hanging the server.
 
 **Example calls:**
 
@@ -127,6 +129,7 @@ Runs an IDAPython script file by path. Useful for executing existing analysis sc
 **Parameters:**
 - `path` (str) — Path to the `.py` script file
 - `args` (str, optional) — Inline code to run after the file, in the same namespace
+- `timeout` (int, default `30`) — Maximum wall-clock seconds (0 = unlimited)
 
 **Key behaviors:**
 - Same persistent namespace and pre-imported modules as `execute`

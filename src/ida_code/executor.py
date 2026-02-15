@@ -1,8 +1,10 @@
 import io
+import signal
 import sys
 import traceback
 
 _MAX_OUTPUT = 50_000
+_DEFAULT_TIMEOUT = 30  # seconds; 0 = no timeout
 
 # Modules to pre-populate in the execution namespace.
 _PRELOADED_MODULES = [
@@ -42,8 +44,20 @@ def reset() -> None:
     _namespace = _build_namespace()
 
 
-def execute(code: str) -> str:
-    """Execute IDAPython code and return captured output."""
+class _Timeout(Exception):
+    pass
+
+
+def _alarm_handler(signum, frame):
+    raise _Timeout()
+
+
+def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
+    """Execute IDAPython code and return captured output.
+
+    *timeout* sets the maximum wall-clock seconds (0 = unlimited).
+    On expiry the code is interrupted and an error message is returned.
+    """
     global _namespace
 
     # Lazy-init namespace on first call.
@@ -53,14 +67,26 @@ def execute(code: str) -> str:
     stdout_capture = io.StringIO()
     stderr_capture = io.StringIO()
     old_stdout, old_stderr = sys.stdout, sys.stderr
+    old_handler = None
 
     try:
         sys.stdout = stdout_capture
         sys.stderr = stderr_capture
+
+        if timeout > 0:
+            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
+            signal.alarm(timeout)
+
         exec(code, _namespace)
+    except _Timeout:
+        stderr_capture.write(f"\n\nExecution timed out after {timeout} seconds.")
     except Exception:
         stderr_capture.write(traceback.format_exc())
     finally:
+        if timeout > 0:
+            signal.alarm(0)  # Cancel any pending alarm.
+            if old_handler is not None:
+                signal.signal(signal.SIGALRM, old_handler)
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 
