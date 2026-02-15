@@ -82,6 +82,69 @@ def execute_file(path: str, args: str | None = None, timeout: int = 30) -> str:
 
 
 @mcp.tool
+def decompile(function: str) -> str:
+    """Decompile a function and return pseudocode.
+
+    *function* can be a name (e.g. "main", "_objc_msgSend") or a hex address
+    (e.g. "0x3f08", "3f08"). The address must fall within a recognized function.
+
+    Requires the Hex-Rays decompiler.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        return "Error: No database is open. Call open_database first."
+
+    import ida_funcs
+    import ida_hexrays
+    import ida_idaapi
+    import ida_name
+
+    # Resolve function name or address.
+    ea = ida_idaapi.BADADDR
+    func = function.strip()
+
+    # Try as hex address first (with or without 0x prefix).
+    try:
+        ea = int(func, 16)
+    except ValueError:
+        pass
+
+    # Try as decimal address.
+    if ea == ida_idaapi.BADADDR:
+        try:
+            ea = int(func, 10)
+        except ValueError:
+            pass
+
+    # Try as a name.
+    if ea == ida_idaapi.BADADDR:
+        ea = ida_name.get_name_ea(ida_idaapi.BADADDR, func)
+
+    if ea == ida_idaapi.BADADDR:
+        return f"Error: Could not resolve '{function}' to an address."
+
+    # Ensure ea is within a function.
+    pfn = ida_funcs.get_func(ea)
+    if pfn is None:
+        return f"Error: Address {ea:#x} is not within a recognized function."
+
+    try:
+        cfunc = ida_hexrays.decompile(pfn.start_ea)
+    except ida_hexrays.DecompilationFailure as e:
+        return f"Error: Decompilation failed: {e}"
+    except Exception as e:
+        return f"Error: {type(e).__name__}: {e}"
+
+    if cfunc is None:
+        return "Error: Decompilation returned no result."
+
+    pseudocode = str(cfunc)
+    func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
+    header = f"// {func_name} @ {pfn.start_ea:#x} (size: {pfn.end_ea - pfn.start_ea:#x})\n\n"
+
+    return header + pseudocode
+
+
+@mcp.tool
 def search_docs(query: str, max_results: int = 10) -> str:
     """Search IDA documentation and Python API sources.
 

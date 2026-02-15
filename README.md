@@ -149,6 +149,31 @@ Run a script then call a function it defines:
 # args: print(analyze_function(0x3f08))
 ```
 
+### `decompile`
+
+Decompiles a function by name or address and returns pseudocode. This is the most common single operation in reverse engineering — having it as a dedicated tool saves round-trips compared to writing Hex-Rays boilerplate via `execute`.
+
+**Parameters:**
+- `function` (str) — Function name (e.g. `"main"`, `"_objc_msgSend"`) or hex address (e.g. `"0x3f08"`, `"3f08"`)
+
+**Returns:** Pseudocode prefixed with a comment showing the resolved function name and address range.
+
+**Example output:**
+```c
+// _main @ 0x3f08 (size: 0x120)
+
+int __fastcall main(int argc, const char **argv, const char **envp)
+{
+  puts("Hello, world!");
+  return 0;
+}
+```
+
+**Error cases:**
+- Name/address not found
+- Address not within a recognized function
+- Hex-Rays decompiler not available or decompilation failure
+
 ### `search_docs`
 
 Searches IDA's bundled documentation and Python API source files. Useful for looking up API signatures, finding the right function for a task, or reading usage examples.
@@ -194,7 +219,7 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py          FastMCP server — 5 tools + 3 resources, stdio transport
+server.py          FastMCP server — 7 tools + 3 resources, stdio transport
     ├── session.py     idalib lifecycle — open/close database, state machine
     ├── executor.py    exec() engine — persistent namespace, output capture
     ├── doc_search.py  keyword search — HTML docs + Python API sources
