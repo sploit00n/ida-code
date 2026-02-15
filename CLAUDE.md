@@ -18,7 +18,7 @@ idalib is loaded automatically from `IDA_INSTALL_DIR/idalib/python/` at startup.
 - `executor.py` — `exec()` with persistent namespace and stdout/stderr capture
 - `doc_search.py` — keyword search over IDA docs + Python API sources
 - `guidelines.py` — coding guideline templates (standalone scripts, plugins, IDAPython scripts)
-- `server.py` — FastMCP server with 5 tools and 3 resources (`guidelines://{target}`)
+- `server.py` — FastMCP server with 7 tools and 3 resources (`guidelines://{target}`)
 
 `__init__.py` imports `session` first to ensure `idapro` is loaded before any `ida_*` modules.
 
