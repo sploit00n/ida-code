@@ -8,9 +8,15 @@ description = "MCP server for AI-assisted IDAPython scripting"
 [project.scripts]
 ida-code = "ida_code.server:main"
 
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ida_code"]
