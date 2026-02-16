@@ -57,6 +57,7 @@ Opens a binary or existing IDA database. If a database is already open, it's clo
 - `path` (str) — Path to binary or `.i64`/`.idb` file
 - `auto_analysis` (bool, default `True`) — Wait for auto-analysis to complete
 - `overwrite` (bool, default `False`) — Delete any existing `.i64`/`.idb` database before opening, forcing a fresh analysis from the original binary
+- `timeout` (int, default `0`) — Maximum seconds to wait for auto-analysis (0 = unlimited). When the timeout expires, the database stays open with partial analysis and a warning is appended to the summary
 
 **Returns:** Summary with processor type, bitness, segment list, entry points, and function count.
 
