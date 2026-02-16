@@ -26,7 +26,7 @@
 - [x] Add timeout to `execute` — infinite loops in user code will hang the server
 - [x] Catch `SystemExit` / `KeyboardInterrupt` in executor so user code can't kill the server
 - [ ] Handle idalib crash recovery — if IDA segfaults, the whole process dies
-- [ ] Add structured logging (currently silent)
+- [x] Add structured logging (currently silent)
 - [ ] Validate file paths in `open_database` before passing to idalib
 
 ## Testing

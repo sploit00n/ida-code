@@ -213,6 +213,7 @@ MCP Resources provide coding guidelines and templates for writing IDAPython code
 | Variable | Default | Description |
 |---|---|---|
 | `IDA_INSTALL_DIR` | `/opt/ida-pro-9.2` | IDA Pro installation directory |
+| `LOG_LEVEL` | `WARNING` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 
 Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/docs`, `$IDA_INSTALL_DIR/python`).
 
