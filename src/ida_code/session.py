@@ -33,8 +33,17 @@ def get_state() -> State:
     return _state
 
 
-def open(path: str, auto_analysis: bool = True, overwrite: bool = False) -> str:
-    """Open a binary/database via idalib. Returns a summary string."""
+def open(
+    path: str,
+    auto_analysis: bool = True,
+    overwrite: bool = False,
+    timeout: int = 0,
+) -> str:
+    """Open a binary/database via idalib. Returns a summary string.
+
+    *timeout* limits auto-analysis wait time in seconds (0 = unlimited).
+    When the timeout expires, the database remains open with partial analysis.
+    """
     global _state
 
     # Close any existing database first.
@@ -44,21 +53,65 @@ def open(path: str, auto_analysis: bool = True, overwrite: bool = False) -> str:
     if overwrite:
         _remove_existing_databases(path)
 
-    log.info("Opening database: %s (auto_analysis=%s, overwrite=%s)", path, auto_analysis, overwrite)
-    rc = idapro.open_database(path, auto_analysis)
+    use_polling = auto_analysis and timeout > 0
+    run_auto = auto_analysis and not use_polling
+
+    log.info(
+        "Opening database: %s (auto_analysis=%s, overwrite=%s, timeout=%d)",
+        path, auto_analysis, overwrite, timeout,
+    )
+    rc = idapro.open_database(path, run_auto)
     if rc != 0:
         log.error("open_database failed with code %d for %s", rc, path)
         return f"Error: open_database returned code {rc}"
 
     _state = State.DATABASE_OPEN
+
+    timed_out = False
+    if use_polling:
+        timed_out = _wait_for_analysis(timeout)
+
     log.info("Database opened successfully: %s", path)
 
     # Reset executor namespace for the new database.
     from ida_code.executor import reset
     reset()
 
-    # Collect summary info.
-    return _collect_summary(path)
+    summary = _collect_summary(path)
+    if timed_out:
+        summary += "\n\nWarning: Auto-analysis timed out — results may be incomplete."
+    return summary
+
+
+def _wait_for_analysis(timeout: int) -> bool:
+    """Poll until auto-analysis finishes or *timeout* seconds elapse.
+
+    Returns True if the timeout expired (analysis incomplete).
+    """
+    import time
+    import ida_auto
+    import ida_funcs
+
+    deadline = time.monotonic() + timeout
+    interval = 0.5  # seconds between polls
+    last_count = 0
+
+    while not ida_auto.auto_is_ok():
+        now = time.monotonic()
+        if now >= deadline:
+            log.warning("Auto-analysis timed out after %ds", timeout)
+            return True
+
+        count = ida_funcs.get_func_qty()
+        if count != last_count:
+            log.info("Auto-analysis in progress: %d functions so far", count)
+            last_count = count
+
+        remaining = deadline - now
+        time.sleep(min(interval, remaining))
+
+    log.info("Auto-analysis completed")
+    return False
 
 
 def _collect_summary(path: str) -> str:

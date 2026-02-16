@@ -14,7 +14,12 @@ mcp = FastMCP("ida-code")
 
 
 @mcp.tool
-def open_database(path: str, auto_analysis: bool = True, overwrite: bool = False) -> str:
+def open_database(
+    path: str,
+    auto_analysis: bool = True,
+    overwrite: bool = False,
+    timeout: int = 0,
+) -> str:
     """Open a binary or IDA database via idalib.
 
     Returns summary info (architecture, segments, entry points, function count).
@@ -22,8 +27,12 @@ def open_database(path: str, auto_analysis: bool = True, overwrite: bool = False
 
     Set overwrite=True to delete any existing .i64/.idb database and force
     a fresh analysis from the original binary.
+
+    *timeout* limits auto-analysis wait time in seconds (default 0 = unlimited).
+    When the timeout expires the database stays open with partial analysis
+    and a warning is appended to the summary.
     """
-    return session.open(path, auto_analysis, overwrite)
+    return session.open(path, auto_analysis, overwrite, timeout=timeout)
 
 
 @mcp.tool
