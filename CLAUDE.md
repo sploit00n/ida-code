@@ -11,6 +11,11 @@ uv run ida-code            # run the server (stdio transport)
 
 idalib is loaded automatically from `IDA_INSTALL_DIR/idalib/python/` at startup.
 
+```bash
+uv sync --extra dev         # install dev dependencies (pytest)
+uv run pytest               # run unit tests
+```
+
 ## Architecture
 
 - `config.py` — env-based config (`IDA_INSTALL_DIR`)

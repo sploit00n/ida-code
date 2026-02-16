@@ -31,8 +31,8 @@
 
 ## Testing
 
-- [ ] Unit tests for `executor.py` (mock ida_* imports)
-- [ ] Unit tests for `doc_search.py` (can run without idalib)
+- [x] Unit tests for `executor.py` (mock ida_* imports)
+- [x] Unit tests for `doc_search.py` (can run without idalib)
 - [ ] Integration test: open binary, execute code, verify output
 - [ ] CI pipeline (needs IDA license — may need to be local-only)
 
