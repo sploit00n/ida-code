@@ -1,9 +1,12 @@
 import atexit
 import enum
+import logging
 import os
 import sys
 
 from ida_code.config import IDA_INSTALL_DIR
+
+log = logging.getLogger(__name__)
 
 # Add idalib's Python package to sys.path so `idapro` can be imported
 # without requiring manual `pip install`.
@@ -41,11 +44,14 @@ def open(path: str, auto_analysis: bool = True, overwrite: bool = False) -> str:
     if overwrite:
         _remove_existing_databases(path)
 
+    log.info("Opening database: %s (auto_analysis=%s, overwrite=%s)", path, auto_analysis, overwrite)
     rc = idapro.open_database(path, auto_analysis)
     if rc != 0:
+        log.error("open_database failed with code %d for %s", rc, path)
         return f"Error: open_database returned code {rc}"
 
     _state = State.DATABASE_OPEN
+    log.info("Database opened successfully: %s", path)
 
     # Reset executor namespace for the new database.
     from ida_code.executor import reset
@@ -112,6 +118,7 @@ def close() -> None:
     """Close the current database."""
     global _state
     if _state == State.DATABASE_OPEN:
+        log.info("Closing database")
         idapro.close_database()
         _state = State.NO_DATABASE
         from ida_code.executor import reset

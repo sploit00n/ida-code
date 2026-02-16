@@ -15,6 +15,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Execution timeout** — `execute` and `execute_file` now enforce a wall-clock timeout (default 30s, configurable via `timeout` parameter, 0 = unlimited). Prevents infinite loops from hanging the server.
 - **Process-killing exception guard** — `SystemExit` and `KeyboardInterrupt` raised by user code are now intercepted and returned as error text instead of killing the server process.
 - **`decompile` tool** — Decompile a function by name or address. Resolves names via `ida_name`, accepts hex/decimal addresses, returns pseudocode with a header comment. Requires Hex-Rays.
+- **Structured logging** — All modules now use Python `logging`. Output goes to stderr (won't interfere with stdio MCP transport). Controlled via `LOG_LEVEL` env var (default `WARNING`).
 
 ### Changed
 

@@ -1,7 +1,10 @@
 import io
+import logging
 import signal
 import sys
 import traceback
+
+log = logging.getLogger(__name__)
 
 _MAX_OUTPUT = 50_000
 _DEFAULT_TIMEOUT = 30  # seconds; 0 = no timeout
@@ -77,13 +80,17 @@ def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
             old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
             signal.alarm(timeout)
 
+        log.debug("Executing code (%d chars, timeout=%ds)", len(code), timeout)
         exec(code, _namespace)
     except _Timeout:
+        log.warning("Execution timed out after %ds", timeout)
         stderr_capture.write(f"\n\nExecution timed out after {timeout} seconds.")
     except (KeyboardInterrupt, SystemExit) as exc:
+        log.warning("%s intercepted from user code", type(exc).__name__)
         stderr_capture.write(f"\n\n{type(exc).__name__} intercepted — the server is still running.\n")
         stderr_capture.write(traceback.format_exc())
     except Exception:
+        log.debug("User code raised exception", exc_info=True)
         stderr_capture.write(traceback.format_exc())
     finally:
         if timeout > 0:

@@ -1,9 +1,12 @@
+import logging
+import sys
 from pathlib import Path
 
 from fastmcp import FastMCP
 
 from ida_code import guidelines as _guidelines
 from ida_code import session
+from ida_code.config import LOG_LEVEL
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
 
@@ -176,6 +179,11 @@ def idapython_script_guidelines() -> str:
 
 
 def main():
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.WARNING),
+        format="%(asctime)s %(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
     mcp.run(transport="stdio")
 
 

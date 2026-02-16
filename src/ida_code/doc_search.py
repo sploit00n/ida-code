@@ -1,9 +1,12 @@
 import json
+import logging
 import re
 from html.parser import HTMLParser
 from pathlib import Path
 
 from ida_code.config import IDA_DOCS_DIR, IDA_PYTHON_DIR
+
+log = logging.getLogger(__name__)
 
 # Lazily-built indexes.
 _html_docs: list[tuple[str, str, str]] | None = None  # (title, clean_text, location)
@@ -99,9 +102,13 @@ def _parse_py_file(path: Path, chunks: list[tuple[str, str, str]]):
 def _ensure_indexes():
     global _html_docs, _py_chunks
     if _html_docs is None:
+        log.info("Loading HTML docs index from %s", IDA_DOCS_DIR)
         _html_docs = _load_html_docs()
+        log.info("Loaded %d HTML doc entries", len(_html_docs))
     if _py_chunks is None:
+        log.info("Loading Python API chunks from %s", IDA_PYTHON_DIR)
         _py_chunks = _load_py_chunks()
+        log.info("Loaded %d Python API chunks", len(_py_chunks))
 
 
 def search(query: str, max_results: int = 10) -> str:
@@ -111,6 +118,7 @@ def search(query: str, max_results: int = 10) -> str:
     terms = query.lower().split()
     if not terms:
         return "No query provided."
+    log.debug("Searching for terms: %s", terms)
 
     results: list[tuple[int, str, str, str]] = []  # (score, title, snippet, source)
 
