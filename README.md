@@ -98,6 +98,7 @@ Runs arbitrary IDAPython code and returns captured stdout + stderr. This is the 
 **Key behaviors:**
 - **Persistent namespace** — Variables and functions defined in one call carry over to the next. Build up helper functions incrementally.
 - **Pre-imported modules** — `ida_funcs`, `ida_bytes`, `ida_name`, `ida_segment`, `idautils`, `idc`, `ida_hexrays`, and more. No boilerplate needed.
+- **REPL-like output** — If the last statement is a bare expression, its `repr()` is returned automatically (like the Python interactive prompt). No need to wrap everything in `print()`.
 - **Tracebacks as output** — Errors are returned as text, not MCP errors. They're useful feedback for the agent to self-correct.
 - **Output truncation** — Capped at 50K characters with a note when truncated.
 - **Timeout protection** — Code that runs longer than the timeout is interrupted and an error message is returned instead of hanging the server.
