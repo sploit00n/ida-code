@@ -105,6 +105,42 @@ class TestProcessKillingExceptions:
         assert "SystemExit" in result
 
 
+class TestReplOutput:
+    """Test REPL-like last-expression printing."""
+
+    def test_bare_expression_returns_repr(self):
+        result = executor.execute("1 + 2", timeout=0)
+        assert result == "3\n"
+
+    def test_string_expression_returns_repr(self):
+        result = executor.execute('"hello"', timeout=0)
+        assert result == "'hello'\n"
+
+    def test_none_expression_suppressed(self):
+        result = executor.execute("None", timeout=0)
+        assert result == ""
+
+    def test_assignment_no_output(self):
+        result = executor.execute("x = 42", timeout=0)
+        assert result == ""
+
+    def test_expression_after_statements(self):
+        result = executor.execute("x = 10\ny = 20\nx + y", timeout=0)
+        assert result == "30\n"
+
+    def test_print_and_expression(self):
+        result = executor.execute('print("before")\n42', timeout=0)
+        assert result == "before\n42\n"
+
+    def test_function_call_expression(self):
+        result = executor.execute("len([1, 2, 3])", timeout=0)
+        assert result == "3\n"
+
+    def test_for_loop_no_expr_output(self):
+        result = executor.execute("for i in range(3):\n    pass", timeout=0)
+        assert result == ""
+
+
 class TestBuildNamespace:
     def test_builtins_present(self):
         ns = executor._build_namespace()

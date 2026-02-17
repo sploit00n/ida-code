@@ -20,6 +20,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`open_database` timeout** — New `timeout` parameter (default 0 = unlimited) limits auto-analysis wait time. When the timeout expires, the database stays open with partial analysis and a warning is appended. Progress (function count) is logged during analysis.
 - **`get_database_info` tool** — Read-only tool returning current database summary (processor, segments, entry points, function count) without opening or closing anything.
 - **`list_functions` tool** — Paginated function listing with address, size, and name. Supports `offset`/`limit` pagination and case-insensitive name `filter`.
+- **REPL-like expression output** — `execute` now returns the `repr()` of the last expression if it's a bare expression (not an assignment or statement), just like the interactive Python prompt. No need to wrap everything in `print()`.
+
+### Changed
+
+- **`execute` behavior** — Last-expression values are now auto-printed. `None` results are suppressed. Explicit `print()` calls still work as before.
 
 ### Changed
 

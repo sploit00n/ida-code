@@ -1,3 +1,4 @@
+import ast
 import io
 import logging
 import signal
@@ -55,6 +56,42 @@ def _alarm_handler(signum, frame):
     raise _Timeout()
 
 
+def _exec_repl(code: str, namespace: dict, stdout: io.StringIO) -> None:
+    """Execute *code* with REPL-like last-expression printing.
+
+    If the last statement is a bare expression (not an assignment, not a
+    function call used for side-effects via print, etc.), its repr is
+    written to *stdout* — just like the interactive Python prompt.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        # Fall back to plain exec if the code can't be parsed (exec will
+        # produce the same SyntaxError with a proper traceback).
+        exec(code, namespace)
+        return
+
+    if not tree.body:
+        return
+
+    last = tree.body[-1]
+    if not isinstance(last, ast.Expr):
+        # Last statement is not a bare expression — exec everything.
+        exec(code, namespace)
+        return
+
+    # Split: exec all statements except the last, then eval the last.
+    if len(tree.body) > 1:
+        head = ast.Module(body=tree.body[:-1], type_ignores=tree.type_ignores)
+        ast.fix_missing_locations(head)
+        exec(compile(head, "<exec>", "exec"), namespace)
+
+    expr_code = compile(ast.Expression(body=last.value), "<eval>", "eval")
+    result = eval(expr_code, namespace)  # noqa: S307
+    if result is not None:
+        stdout.write(repr(result) + "\n")
+
+
 def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
     """Execute IDAPython code and return captured output.
 
@@ -81,7 +118,7 @@ def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
             signal.alarm(timeout)
 
         log.debug("Executing code (%d chars, timeout=%ds)", len(code), timeout)
-        exec(code, _namespace)
+        _exec_repl(code, _namespace, stdout_capture)
     except _Timeout:
         log.warning("Execution timed out after %ds", timeout)
         stderr_capture.write(f"\n\nExecution timed out after {timeout} seconds.")
