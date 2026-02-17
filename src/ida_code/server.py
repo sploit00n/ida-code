@@ -36,6 +36,16 @@ def open_database(
 
 
 @mcp.tool
+def get_database_info() -> str:
+    """Return summary info about the current database.
+
+    Returns processor type, bitness, segments, entry points, and function count
+    without opening or closing anything. If no database is open, says so.
+    """
+    return session.info()
+
+
+@mcp.tool
 def close_database() -> str:
     """Close the current database and free resources.
 

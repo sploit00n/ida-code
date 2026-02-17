@@ -75,6 +75,12 @@ Entry points (1):
   _main: 0x3f08
 ```
 
+### `get_database_info`
+
+Returns summary info about the current database (processor type, bitness, segments, entry points, function count) without opening or closing anything. If no database is open, says so.
+
+**Parameters:** None.
+
 ### `close_database`
 
 Closes the current database and frees resources. The executor namespace is cleared. Safe to call when no database is open (returns a no-op message).
