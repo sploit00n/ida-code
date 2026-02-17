@@ -21,6 +21,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`get_database_info` tool** — Read-only tool returning current database summary (processor, segments, entry points, function count) without opening or closing anything.
 - **`list_functions` tool** — Paginated function listing with address, size, and name. Supports `offset`/`limit` pagination and case-insensitive name `filter`.
 - **REPL-like expression output** — `execute` now returns the `repr()` of the last expression if it's a bare expression (not an assignment or statement), just like the interactive Python prompt. No need to wrap everything in `print()`.
+- **`search_examples` tool** — Search 125 official IDAPython example scripts. Indexes metadata from `index.md` (title, description, keywords, APIs used, level, category) and AST-parses each `.py` file for imports, definitions, and `ida_*` API call patterns. Weighted scoring ranks API matches highest. Supports `category` and `level` filters.
 
 ### Changed
 

@@ -9,6 +9,7 @@ from ida_code import session
 from ida_code.config import LOG_LEVEL
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
+from ida_code.example_search import search as _search_examples
 
 mcp = FastMCP("ida-code")
 
@@ -223,6 +224,24 @@ def search_docs(query: str, max_results: int = 10) -> str:
     Returns matching snippets with source attribution.
     """
     return _search_docs(query, max_results)
+
+
+@mcp.tool
+def search_examples(
+    query: str,
+    max_results: int = 10,
+    category: str = "",
+    level: str = "",
+) -> str:
+    """Search 125 official IDAPython example scripts.
+
+    Searches example metadata (title, description, keywords, APIs used)
+    and source code (imports, function definitions, API call patterns).
+
+    *category* filters: ui, disassembler, decompiler, debugger, types, misc.
+    *level* filters: beginner, intermediate, advanced.
+    """
+    return _search_examples(query, max_results, category, level)
 
 
 @mcp.resource("guidelines://standalone_script")
