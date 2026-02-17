@@ -10,7 +10,7 @@
 ## Tools
 
 - [x] Add `get_database_info` tool — return current state without opening/closing anything
-- [ ] Add `list_functions` tool — paginated function listing (common enough to be its own tool)
+- [x] Add `list_functions` tool — paginated function listing (common enough to be its own tool)
 - [x] Add `decompile` tool — dedicated decompilation with address/name input (wraps ida_hexrays)
 - [ ] Support `execute` returning the repr of the last expression (like a REPL, not just print output)
 

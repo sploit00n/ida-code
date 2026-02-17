@@ -181,6 +181,25 @@ int __fastcall main(int argc, const char **argv, const char **envp)
 - Address not within a recognized function
 - Hex-Rays decompiler not available or decompilation failure
 
+### `list_functions`
+
+Lists functions in the database with pagination. Returns one line per function with address, size, and name.
+
+**Parameters:**
+- `offset` (int, default `0`) — Skip the first N functions (for pagination)
+- `limit` (int, default `100`, max `1000`) — Maximum functions to return
+- `filter` (str, default `""`) — Only include functions whose name contains this substring (case-insensitive)
+
+**Example output:**
+```
+Functions (showing 5, total 142, offset=0):
+0x3e00   0x20  _start
+0x3e20   0x48  __libc_csu_init
+0x3e68   0x02  __libc_csu_fini
+0x3f08  0x120  _main
+0x4028   0x64  _helper
+```
+
 ### `search_docs`
 
 Searches IDA's bundled documentation and Python API source files. Useful for looking up API signatures, finding the right function for a task, or reading usage examples.
@@ -227,7 +246,7 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py          FastMCP server — 7 tools + 3 resources, stdio transport
+server.py          FastMCP server — 8 tools + 3 resources, stdio transport
     ├── session.py     idalib lifecycle — open/close database, state machine
     ├── executor.py    exec() engine — persistent namespace, output capture
     ├── doc_search.py  keyword search — HTML docs + Python API sources

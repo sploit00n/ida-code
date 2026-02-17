@@ -167,6 +167,52 @@ def decompile(function: str) -> str:
 
 
 @mcp.tool
+def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> str:
+    """List functions in the database with pagination.
+
+    Returns one line per function: address, size, and name.
+
+    *offset* skips the first N functions (for pagination).
+    *limit* caps the number of functions returned (max 1000).
+    *filter* if non-empty, only includes functions whose name contains
+    this substring (case-insensitive).
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        return "Error: No database is open. Call open_database first."
+
+    import ida_funcs
+    import idautils
+
+    limit = min(limit, 1000)
+    all_funcs = list(idautils.Functions())
+    total = len(all_funcs)
+
+    lines: list[str] = []
+    skipped = 0
+    for ea in all_funcs:
+        name = ida_funcs.get_func_name(ea) or f"sub_{ea:x}"
+        if filter and filter.lower() not in name.lower():
+            continue
+        if skipped < offset:
+            skipped += 1
+            continue
+        pfn = ida_funcs.get_func(ea)
+        size = pfn.end_ea - pfn.start_ea if pfn else 0
+        lines.append(f"{ea:#x}  {size:#6x}  {name}")
+        if len(lines) >= limit:
+            break
+
+    header = f"Functions (showing {len(lines)}, total {total}"
+    if filter:
+        header += f", filter={filter!r}"
+    header += f", offset={offset}):"
+
+    if not lines:
+        return header + "\n  (none)"
+    return header + "\n" + "\n".join(lines)
+
+
+@mcp.tool
 def search_docs(query: str, max_results: int = 10) -> str:
     """Search IDA documentation and Python API sources.
 
