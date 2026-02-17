@@ -21,6 +21,16 @@
 - [ ] Index C++ SDK headers (`$IDA_INSTALL_DIR/sdk/include/*.hpp`) for cross-referencing
 - [ ] Add search result pagination (offset parameter)
 
+## Example Search
+
+- [x] Index official IDAPython examples from `$IDA_PYTHON_DIR/examples/`
+- [x] Parse `index.md` metadata (title, keywords, APIs, level, category)
+- [x] AST-parse `.py` files for imports, definitions, and API call patterns
+- [x] Weighted scoring with all-terms bonus
+- [x] Category and level filters
+- [ ] Support searching by specific API signature (e.g. `ida_hexrays.decompile`)
+- [ ] Index user-provided example directories via config
+
 ## Robustness
 
 - [x] Add timeout to `execute` — infinite loops in user code will hang the server

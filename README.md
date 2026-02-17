@@ -225,6 +225,31 @@ def get_func_name(ea: ida_idaapi.ea_t) ->str:
     :returns: length of the function name"""
 ```
 
+### `search_examples`
+
+Searches the 125 official IDAPython example scripts bundled with IDA. Uses AST parsing to index imports, function definitions, and API call patterns alongside curated metadata (title, description, keywords, APIs used) from IDA's `index.md`.
+
+**Parameters:**
+- `query` (str) — Search terms (space-separated, case-insensitive)
+- `max_results` (int, default `10`) — Maximum results to return
+- `category` (str, default `""`) — Filter by category: `ui`, `disassembler`, `decompiler`, `debugger`, `types`, `misc`
+- `level` (str, default `""`) — Filter by difficulty: `beginner`, `intermediate`, `advanced`
+
+**Scoring** ranks results by field relevance: API matches score highest (5pts), followed by title/keyword matches (3-4pts), imports/descriptions (1.5-2pts), and source text fallback (0.5pts). Queries matching all terms get a 1.5x bonus.
+
+**Example output** for query `"decompile"`:
+```
+### Decompile entrypoint automatically  [intermediate, decompiler]
+File: decompiler/decompile_entry_points.py
+decompile entrypoint automatically
+APIs: ida_hexrays.decompile, ida_hexrays.init_hexrays_plugin
+```python
+import ida_hexrays
+def init_hexrays():
+    ...
+```
+```
+
 ## Resources
 
 MCP Resources provide coding guidelines and templates for writing IDAPython code. Read them via your MCP client's resource browsing capability.
@@ -247,12 +272,13 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py          FastMCP server — 8 tools + 3 resources, stdio transport
-    ├── session.py     idalib lifecycle — open/close database, state machine
-    ├── executor.py    exec() engine — persistent namespace, output capture
-    ├── doc_search.py  keyword search — HTML docs + Python API sources
-    ├── guidelines.py  coding templates — standalone scripts, plugins, IDAPython scripts
-    └── config.py      environment-based configuration
+server.py              FastMCP server — 9 tools + 3 resources, stdio transport
+    ├── session.py         idalib lifecycle — open/close database, state machine
+    ├── executor.py        exec() engine — persistent namespace, output capture
+    ├── doc_search.py      keyword search — HTML docs + Python API sources
+    ├── example_search.py  AST-based search — 125 official IDAPython examples
+    ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts
+    └── config.py          environment-based configuration
 ```
 
 The server runs idalib in-process (no IPC, no batch mode). This gives persistent state and fast iteration — the agent can open a binary once and run hundreds of analysis commands against it.
