@@ -27,10 +27,18 @@ class State(enum.Enum):
 
 
 _state = State.NO_DATABASE
+_db_path: str | None = None
 
 
 def get_state() -> State:
     return _state
+
+
+def info() -> str:
+    """Return a summary of the current database, or a no-database message."""
+    if _state == State.NO_DATABASE:
+        return "No database is currently open."
+    return _collect_summary(_db_path or "<unknown>")
 
 
 def open(
@@ -44,7 +52,7 @@ def open(
     *timeout* limits auto-analysis wait time in seconds (0 = unlimited).
     When the timeout expires, the database remains open with partial analysis.
     """
-    global _state
+    global _state, _db_path
 
     # Close any existing database first.
     if _state == State.DATABASE_OPEN:
@@ -66,6 +74,7 @@ def open(
         return f"Error: open_database returned code {rc}"
 
     _state = State.DATABASE_OPEN
+    _db_path = path
 
     timed_out = False
     if use_polling:
@@ -169,11 +178,12 @@ def _remove_existing_databases(path: str) -> None:
 
 def close() -> None:
     """Close the current database."""
-    global _state
+    global _state, _db_path
     if _state == State.DATABASE_OPEN:
         log.info("Closing database")
         idapro.close_database()
         _state = State.NO_DATABASE
+        _db_path = None
         from ida_code.executor import reset
         reset()
 

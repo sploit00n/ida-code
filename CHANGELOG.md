@@ -18,6 +18,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Structured logging** — All modules now use Python `logging`. Output goes to stderr (won't interfere with stdio MCP transport). Controlled via `LOG_LEVEL` env var (default `WARNING`).
 - **Unit tests** — 35 tests covering executor (output capture, timeout, exception handling, namespace persistence, truncation) and doc_search (HTML stripping, scoring, excerpt extraction). Run with `uv run pytest`.
 - **`open_database` timeout** — New `timeout` parameter (default 0 = unlimited) limits auto-analysis wait time. When the timeout expires, the database stays open with partial analysis and a warning is appended. Progress (function count) is logged during analysis.
+- **`get_database_info` tool** — Read-only tool returning current database summary (processor, segments, entry points, function count) without opening or closing anything.
 
 ### Changed
 
