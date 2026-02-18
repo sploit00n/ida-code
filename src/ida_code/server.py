@@ -107,6 +107,38 @@ def execute_file(path: str, args: str | None = None, timeout: int = 30) -> str:
     return _execute(code, timeout=timeout)
 
 
+def _resolve_address(identifier: str) -> int:
+    """Resolve a name or numeric string to an address.
+
+    Tries hex (with or without ``0x``), then decimal, then IDA name lookup.
+    Returns ``ida_idaapi.BADADDR`` on failure.
+    """
+    import ida_idaapi
+    import ida_name
+
+    ea = ida_idaapi.BADADDR
+    s = identifier.strip()
+
+    # Try as hex address first (with or without 0x prefix).
+    try:
+        ea = int(s, 16)
+    except ValueError:
+        pass
+
+    # Try as decimal address.
+    if ea == ida_idaapi.BADADDR:
+        try:
+            ea = int(s, 10)
+        except ValueError:
+            pass
+
+    # Try as a name.
+    if ea == ida_idaapi.BADADDR:
+        ea = ida_name.get_name_ea(ida_idaapi.BADADDR, s)
+
+    return ea
+
+
 @mcp.tool
 def decompile(function: str) -> str:
     """Decompile a function and return pseudocode.
@@ -122,29 +154,8 @@ def decompile(function: str) -> str:
     import ida_funcs
     import ida_hexrays
     import ida_idaapi
-    import ida_name
 
-    # Resolve function name or address.
-    ea = ida_idaapi.BADADDR
-    func = function.strip()
-
-    # Try as hex address first (with or without 0x prefix).
-    try:
-        ea = int(func, 16)
-    except ValueError:
-        pass
-
-    # Try as decimal address.
-    if ea == ida_idaapi.BADADDR:
-        try:
-            ea = int(func, 10)
-        except ValueError:
-            pass
-
-    # Try as a name.
-    if ea == ida_idaapi.BADADDR:
-        ea = ida_name.get_name_ea(ida_idaapi.BADADDR, func)
-
+    ea = _resolve_address(function)
     if ea == ida_idaapi.BADADDR:
         return f"Error: Could not resolve '{function}' to an address."
 
@@ -168,6 +179,39 @@ def decompile(function: str) -> str:
     header = f"// {func_name} @ {pfn.start_ea:#x} (size: {pfn.end_ea - pfn.start_ea:#x})\n\n"
 
     return header + pseudocode
+
+
+@mcp.tool
+def get_disassembly(start: str, length: int = 0x100) -> str:
+    """Get disassembly for an address range.
+
+    *start* can be a name (e.g. "main") or address (hex "0x3f08" / "3f08",
+    decimal "16136"). *length* is the number of bytes from start to disassemble
+    (default 256, capped at 64 KB).
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        return "Error: No database is open. Call open_database first."
+
+    import ida_idaapi
+    import idc
+    import idautils
+
+    ea = _resolve_address(start)
+    if ea == ida_idaapi.BADADDR:
+        return f"Error: Could not resolve '{start}' to an address."
+
+    length = max(1, min(length, 0x10000))
+    end_ea = ea + length
+
+    lines: list[str] = []
+    for head in idautils.Heads(ea, end_ea):
+        lines.append(f"{head:#x}  {idc.GetDisasm(head)}")
+
+    if not lines:
+        return f"Error: No instructions found in range {ea:#x}\u2013{end_ea:#x}."
+
+    header = f"Disassembly {ea:#x}\u2013{end_ea:#x} ({len(lines)} instructions):"
+    return header + "\n" + "\n".join(lines)
 
 
 @mcp.tool
