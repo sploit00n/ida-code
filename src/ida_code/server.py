@@ -1,4 +1,7 @@
+import argparse
+import hmac
 import logging
+import secrets
 import sys
 from pathlib import Path
 
@@ -6,7 +9,7 @@ from fastmcp import FastMCP
 
 from ida_code import guidelines as _guidelines
 from ida_code import session
-from ida_code.config import LOG_LEVEL
+from ida_code.config import LOG_LEVEL, MCP_AUTH_TOKEN
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
 from ida_code.example_search import search as _search_examples
@@ -262,13 +265,52 @@ def idapython_script_guidelines() -> str:
     return _guidelines.get("idapython_script")
 
 
+def _parse_host_port(value: str) -> tuple[str, int]:
+    """Parse a ``host:port`` string, defaulting to ``127.0.0.1:8080``."""
+    if not value:
+        return "127.0.0.1", 8080
+    # Split on the *last* colon so IPv6 addresses work if quoted.
+    if ":" in value:
+        host, _, port_str = value.rpartition(":")
+        host = host or "127.0.0.1"
+        return host, int(port_str)
+    # Bare hostname / IP with no port.
+    return value, 8080
+
+
 def main():
     logging.basicConfig(
         level=getattr(logging, LOG_LEVEL, logging.WARNING),
         format="%(asctime)s %(name)s %(levelname)s %(message)s",
         stream=sys.stderr,
     )
-    mcp.run(transport="stdio")
+
+    parser = argparse.ArgumentParser(prog="ida-code", description="MCP server for IDAPython scripting via idalib")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--http", nargs="?", const="127.0.0.1:8080", metavar="HOST:PORT",
+                       help="Run with streamable-http transport (default: 127.0.0.1:8080)")
+    group.add_argument("--sse", nargs="?", const="127.0.0.1:8080", metavar="HOST:PORT",
+                       help="Run with SSE transport (default: 127.0.0.1:8080)")
+    args = parser.parse_args()
+
+    if args.http or args.sse:
+        transport = "streamable-http" if args.http else "sse"
+        host, port = _parse_host_port(args.http or args.sse)
+
+        auth_token = MCP_AUTH_TOKEN
+        if not auth_token:
+            auth_token = secrets.token_urlsafe(32)
+            print(f"Generated auth token: {auth_token}", file=sys.stderr)
+
+        from fastmcp.server.auth import DebugTokenVerifier
+
+        mcp.auth = DebugTokenVerifier(
+            validate=lambda token: hmac.compare_digest(token, auth_token),
+            client_id="ida-code-client",
+        )
+        mcp.run(transport=transport, host=host, port=port)
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":

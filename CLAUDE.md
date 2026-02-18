@@ -16,6 +16,18 @@ uv sync --extra dev         # install dev dependencies (pytest)
 uv run pytest               # run unit tests
 ```
 
+## Transport Modes
+
+```bash
+uv run ida-code                          # stdio (default)
+uv run ida-code --http                   # streamable-http on 127.0.0.1:8080
+uv run ida-code --http 0.0.0.0:9090     # streamable-http on custom host:port
+uv run ida-code --sse                    # SSE on 127.0.0.1:8080
+uv run ida-code --sse :9090             # SSE on 127.0.0.1:9090
+```
+
+HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let the server generate one (printed to stderr on startup).
+
 ## Architecture
 
 - `config.py` — env-based config (`IDA_INSTALL_DIR`)
