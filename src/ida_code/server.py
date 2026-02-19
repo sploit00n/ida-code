@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 from ida_code import guidelines as _guidelines
 from ida_code import session
@@ -23,7 +24,7 @@ def open_database(
     auto_analysis: bool = True,
     overwrite: bool = False,
     timeout: int = 0,
-) -> str:
+) -> dict:
     """Open a binary or IDA database via idalib.
 
     Returns summary info (architecture, segments, entry points, function count).
@@ -40,7 +41,7 @@ def open_database(
 
 
 @mcp.tool
-def get_database_info() -> str:
+def get_database_info() -> dict:
     """Return summary info about the current database.
 
     Returns processor type, bitness, segments, entry points, and function count
@@ -50,19 +51,19 @@ def get_database_info() -> str:
 
 
 @mcp.tool
-def close_database() -> str:
+def close_database() -> dict:
     """Close the current database and free resources.
 
     The executor namespace is cleared. No database will be open after this call.
     """
     if session.get_state() == session.State.NO_DATABASE:
-        return "No database is currently open."
+        raise ToolError("No database is currently open.")
     session.close()
-    return "Database closed."
+    return {"status": "closed"}
 
 
 @mcp.tool
-def execute(code: str, timeout: int = 30) -> str:
+def execute(code: str, timeout: int = 30) -> dict:
     """Execute IDAPython code and return captured output.
 
     The execution namespace persists across calls — variables and functions defined
@@ -74,12 +75,13 @@ def execute(code: str, timeout: int = 30) -> str:
     *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
     """
     if session.get_state() == session.State.NO_DATABASE:
-        return "Error: No database is open. Call open_database first."
-    return _execute(code, timeout=timeout)
+        raise ToolError("No database is open. Call open_database first.")
+    text = _execute(code, timeout=timeout)
+    return {"output": text, "truncated": len(text) >= 50000}
 
 
 @mcp.tool
-def execute_file(path: str, args: str | None = None, timeout: int = 30) -> str:
+def execute_file(path: str, args: str | None = None, timeout: int = 30) -> dict:
     """Execute an IDAPython script file and return captured output.
 
     Reads the file at `path` and executes it. Optionally, `args` provides
@@ -91,20 +93,21 @@ def execute_file(path: str, args: str | None = None, timeout: int = 30) -> str:
     *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
     """
     if session.get_state() == session.State.NO_DATABASE:
-        return "Error: No database is open. Call open_database first."
+        raise ToolError("No database is open. Call open_database first.")
 
     p = Path(path)
     if not p.is_file():
-        return f"Error: File not found: {path}"
+        raise ToolError(f"File not found: {path}")
     try:
         code = p.read_text(errors="replace")
     except OSError as e:
-        return f"Error: Could not read file: {e}"
+        raise ToolError(f"Could not read file: {e}")
 
     if args:
         code = code + "\n" + args
 
-    return _execute(code, timeout=timeout)
+    text = _execute(code, timeout=timeout)
+    return {"output": text, "truncated": len(text) >= 50000}
 
 
 def _resolve_address(identifier: str) -> int:
@@ -140,7 +143,7 @@ def _resolve_address(identifier: str) -> int:
 
 
 @mcp.tool
-def decompile(function: str) -> str:
+def decompile(function: str) -> dict:
     """Decompile a function and return pseudocode.
 
     *function* can be a name (e.g. "main", "_objc_msgSend") or a hex address
@@ -149,7 +152,7 @@ def decompile(function: str) -> str:
     Requires the Hex-Rays decompiler.
     """
     if session.get_state() == session.State.NO_DATABASE:
-        return "Error: No database is open. Call open_database first."
+        raise ToolError("No database is open. Call open_database first.")
 
     import ida_funcs
     import ida_hexrays
@@ -157,32 +160,34 @@ def decompile(function: str) -> str:
 
     ea = _resolve_address(function)
     if ea == ida_idaapi.BADADDR:
-        return f"Error: Could not resolve '{function}' to an address."
+        raise ToolError(f"Could not resolve '{function}' to an address.")
 
     # Ensure ea is within a function.
     pfn = ida_funcs.get_func(ea)
     if pfn is None:
-        return f"Error: Address {ea:#x} is not within a recognized function."
+        raise ToolError(f"Address {ea:#x} is not within a recognized function.")
 
     try:
         cfunc = ida_hexrays.decompile(pfn.start_ea)
     except ida_hexrays.DecompilationFailure as e:
-        return f"Error: Decompilation failed: {e}"
+        raise ToolError(f"Decompilation failed: {e}")
     except Exception as e:
-        return f"Error: {type(e).__name__}: {e}"
+        raise ToolError(f"{type(e).__name__}: {e}")
 
     if cfunc is None:
-        return "Error: Decompilation returned no result."
+        raise ToolError("Decompilation returned no result.")
 
-    pseudocode = str(cfunc)
     func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
-    header = f"// {func_name} @ {pfn.start_ea:#x} (size: {pfn.end_ea - pfn.start_ea:#x})\n\n"
-
-    return header + pseudocode
+    return {
+        "name": func_name,
+        "address": f"{pfn.start_ea:#x}",
+        "size": f"{pfn.end_ea - pfn.start_ea:#x}",
+        "pseudocode": str(cfunc),
+    }
 
 
 @mcp.tool
-def get_disassembly(start: str, length: int = 0x100) -> str:
+def get_disassembly(start: str, length: int = 0x100) -> dict:
     """Get disassembly for an address range.
 
     *start* can be a name (e.g. "main") or address (hex "0x3f08" / "3f08",
@@ -190,7 +195,7 @@ def get_disassembly(start: str, length: int = 0x100) -> str:
     (default 256, capped at 64 KB).
     """
     if session.get_state() == session.State.NO_DATABASE:
-        return "Error: No database is open. Call open_database first."
+        raise ToolError("No database is open. Call open_database first.")
 
     import ida_idaapi
     import idc
@@ -198,24 +203,28 @@ def get_disassembly(start: str, length: int = 0x100) -> str:
 
     ea = _resolve_address(start)
     if ea == ida_idaapi.BADADDR:
-        return f"Error: Could not resolve '{start}' to an address."
+        raise ToolError(f"Could not resolve '{start}' to an address.")
 
     length = max(1, min(length, 0x10000))
     end_ea = ea + length
 
-    lines: list[str] = []
+    instructions: list[dict] = []
     for head in idautils.Heads(ea, end_ea):
-        lines.append(f"{head:#x}  {idc.GetDisasm(head)}")
+        instructions.append({"address": f"{head:#x}", "disasm": idc.GetDisasm(head)})
 
-    if not lines:
-        return f"Error: No instructions found in range {ea:#x}\u2013{end_ea:#x}."
+    if not instructions:
+        raise ToolError(f"No instructions found in range {ea:#x}\u2013{end_ea:#x}.")
 
-    header = f"Disassembly {ea:#x}\u2013{end_ea:#x} ({len(lines)} instructions):"
-    return header + "\n" + "\n".join(lines)
+    return {
+        "start": f"{ea:#x}",
+        "end": f"{end_ea:#x}",
+        "count": len(instructions),
+        "instructions": instructions,
+    }
 
 
 @mcp.tool
-def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> str:
+def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> dict:
     """List functions in the database with pagination.
 
     Returns one line per function: address, size, and name.
@@ -226,7 +235,7 @@ def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> str:
     this substring (case-insensitive).
     """
     if session.get_state() == session.State.NO_DATABASE:
-        return "Error: No database is open. Call open_database first."
+        raise ToolError("No database is open. Call open_database first.")
 
     import ida_funcs
     import idautils
@@ -235,7 +244,7 @@ def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> str:
     all_funcs = list(idautils.Functions())
     total = len(all_funcs)
 
-    lines: list[str] = []
+    functions: list[dict] = []
     skipped = 0
     for ea in all_funcs:
         name = ida_funcs.get_func_name(ea) or f"sub_{ea:x}"
@@ -246,22 +255,21 @@ def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> str:
             continue
         pfn = ida_funcs.get_func(ea)
         size = pfn.end_ea - pfn.start_ea if pfn else 0
-        lines.append(f"{ea:#x}  {size:#6x}  {name}")
-        if len(lines) >= limit:
+        functions.append({"address": f"{ea:#x}", "size": f"{size:#x}", "name": name})
+        if len(functions) >= limit:
             break
 
-    header = f"Functions (showing {len(lines)}, total {total}"
-    if filter:
-        header += f", filter={filter!r}"
-    header += f", offset={offset}):"
-
-    if not lines:
-        return header + "\n  (none)"
-    return header + "\n" + "\n".join(lines)
+    return {
+        "functions": functions,
+        "total": total,
+        "showing": len(functions),
+        "offset": offset,
+        "filter": filter,
+    }
 
 
 @mcp.tool
-def search_docs(query: str, max_results: int = 10) -> str:
+def search_docs(query: str, max_results: int = 10) -> dict:
     """Search IDA documentation and Python API sources.
 
     Searches two corpora:
@@ -279,7 +287,7 @@ def search_examples(
     max_results: int = 10,
     category: str = "",
     level: str = "",
-) -> str:
+) -> dict:
     """Search 125 official IDAPython example scripts.
 
     Searches example metadata (title, description, keywords, APIs used)

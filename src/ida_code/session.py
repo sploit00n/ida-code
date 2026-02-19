@@ -34,10 +34,15 @@ def get_state() -> State:
     return _state
 
 
-def info() -> str:
-    """Return a summary of the current database, or a no-database message."""
+def info() -> dict:
+    """Return a summary dict of the current database.
+
+    Raises ``ToolError`` if no database is open.
+    """
+    from fastmcp.exceptions import ToolError
+
     if _state == State.NO_DATABASE:
-        return "No database is currently open."
+        raise ToolError("No database is currently open.")
     return _collect_summary(_db_path or "<unknown>")
 
 
@@ -46,12 +51,16 @@ def open(
     auto_analysis: bool = True,
     overwrite: bool = False,
     timeout: int = 0,
-) -> str:
-    """Open a binary/database via idalib. Returns a summary string.
+) -> dict:
+    """Open a binary/database via idalib. Returns a summary dict.
 
     *timeout* limits auto-analysis wait time in seconds (0 = unlimited).
     When the timeout expires, the database remains open with partial analysis.
+
+    Raises ``ToolError`` on failure.
     """
+    from fastmcp.exceptions import ToolError
+
     global _state, _db_path
 
     # Close any existing database first.
@@ -71,7 +80,7 @@ def open(
     rc = idapro.open_database(path, run_auto)
     if rc != 0:
         log.error("open_database failed with code %d for %s", rc, path)
-        return f"Error: open_database returned code {rc}"
+        raise ToolError(f"open_database returned code {rc}")
 
     _state = State.DATABASE_OPEN
     _db_path = path
@@ -87,8 +96,11 @@ def open(
     reset()
 
     summary = _collect_summary(path)
-    if timed_out:
-        summary += "\n\nWarning: Auto-analysis timed out — results may be incomplete."
+    summary["warning"] = (
+        "Auto-analysis timed out \u2014 results may be incomplete."
+        if timed_out
+        else None
+    )
     return summary
 
 
@@ -123,13 +135,13 @@ def _wait_for_analysis(timeout: int) -> bool:
     return False
 
 
-def _collect_summary(path: str) -> str:
+def _collect_summary(path: str) -> dict:
     import ida_ida
     import ida_entry
     import ida_segment
     import idautils
 
-    info = ida_ida.inf_get_procname()
+    processor = ida_ida.inf_get_procname()
     bits = 64 if ida_ida.inf_is_64bit() else (32 if ida_ida.inf_is_32bit() else 16)
 
     # Segments
@@ -137,33 +149,31 @@ def _collect_summary(path: str) -> str:
     for seg_ea in idautils.Segments():
         seg = ida_segment.getseg(seg_ea)
         name = ida_segment.get_segm_name(seg)
-        segments.append(f"  {name}: {seg.start_ea:#x}-{seg.end_ea:#x}")
+        segments.append({
+            "name": name,
+            "start": f"{seg.start_ea:#x}",
+            "end": f"{seg.end_ea:#x}",
+        })
 
     # Entry points
-    entries = []
+    entry_points = []
     for i in range(ida_entry.get_entry_qty()):
         ordinal = ida_entry.get_entry_ordinal(i)
         ea = ida_entry.get_entry(ordinal)
         name = ida_entry.get_entry_name(ordinal)
-        entries.append(f"  {name}: {ea:#x}")
+        entry_points.append({"name": name, "address": f"{ea:#x}"})
 
     # Function count
     func_count = sum(1 for _ in idautils.Functions())
 
-    lines = [
-        f"Database opened: {path}",
-        f"Processor: {info} ({bits}-bit)",
-        f"Functions: {func_count}",
-        f"Segments ({len(segments)}):",
-        *segments,
-    ]
-    if entries:
-        lines.append(f"Entry points ({len(entries)}):")
-        lines.extend(entries[:20])
-        if len(entries) > 20:
-            lines.append(f"  ... and {len(entries) - 20} more")
-
-    return "\n".join(lines)
+    return {
+        "path": path,
+        "processor": processor,
+        "bits": bits,
+        "function_count": func_count,
+        "segments": segments,
+        "entry_points": entry_points,
+    }
 
 
 def _remove_existing_databases(path: str) -> None:

@@ -111,13 +111,13 @@ def _ensure_indexes():
         log.info("Loaded %d Python API chunks", len(_py_chunks))
 
 
-def search(query: str, max_results: int = 10) -> str:
-    """Search IDA docs and Python API sources. Returns formatted results."""
+def search(query: str, max_results: int = 10) -> dict:
+    """Search IDA docs and Python API sources. Returns structured dict."""
     _ensure_indexes()
 
     terms = query.lower().split()
     if not terms:
-        return "No query provided."
+        return {"query": query, "results": []}
     log.debug("Searching for terms: %s", terms)
 
     results: list[tuple[int, str, str, str]] = []  # (score, title, snippet, source)
@@ -140,16 +140,13 @@ def search(query: str, max_results: int = 10) -> str:
     results.sort(key=lambda r: r[0], reverse=True)
     results = results[:max_results]
 
-    if not results:
-        return f"No results found for: {query}"
-
-    lines = []
-    for score, title, snippet, source in results:
-        lines.append(f"[{source}] {title}")
-        lines.append(snippet)
-        lines.append("")
-
-    return "\n".join(lines).rstrip()
+    return {
+        "query": query,
+        "results": [
+            {"source": source, "title": title, "snippet": snippet, "score": score}
+            for score, title, snippet, source in results
+        ],
+    }
 
 
 def _score(terms: list[str], title: str, text: str) -> int:

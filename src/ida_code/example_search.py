@@ -526,13 +526,13 @@ def search(
     max_results: int = 10,
     category: str = "",
     level: str = "",
-) -> str:
-    """Search example scripts and return formatted results."""
+) -> dict:
+    """Search example scripts and return structured dict."""
     _ensure_index()
 
     terms = query.lower().split()
     if not terms:
-        return "No query provided."
+        return {"query": query, "results": []}
 
     results: list[tuple[float, ExampleEntry]] = []
 
@@ -550,34 +550,19 @@ def search(
     results.sort(key=lambda r: r[0], reverse=True)
     results = results[:max_results]
 
-    if not results:
-        msg = f"No examples found for: {query}"
-        if category:
-            msg += f" (category={category})"
-        if level:
-            msg += f" (level={level})"
-        return msg
-
-    lines: list[str] = []
-    for score, entry in results:
-        header = f"### {entry.title or entry.filename}"
-        meta_parts = []
-        if entry.level:
-            meta_parts.append(entry.level)
-        if entry.category:
-            meta_parts.append(entry.category)
-        meta = ", ".join(meta_parts)
-        lines.append(f"{header}  [{meta}]")
-        lines.append(f"File: {entry.rel_path}")
-        if entry.summary:
-            lines.append(entry.summary)
-        if entry.apis_used:
-            lines.append("APIs: " + ", ".join(entry.apis_used[:8]))
-        snippet = extract_snippet(entry.source, terms)
-        if snippet:
-            lines.append("```python")
-            lines.append(snippet)
-            lines.append("```")
-        lines.append("")
-
-    return "\n".join(lines).rstrip()
+    return {
+        "query": query,
+        "results": [
+            {
+                "title": entry.title or entry.filename,
+                "file": entry.rel_path,
+                "level": entry.level,
+                "category": entry.category,
+                "summary": entry.summary,
+                "apis": entry.apis_used,
+                "snippet": extract_snippet(entry.source, terms),
+                "score": score,
+            }
+            for score, entry in results
+        ],
+    }
