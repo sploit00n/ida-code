@@ -523,9 +523,10 @@ def _find_docstring_end(source: str) -> int:
 
 def search(
     query: str,
-    max_results: int = 10,
+    max_results: int = 5,
     category: str = "",
     level: str = "",
+    max_snippet_lines: int = 10,
 ) -> dict:
     """Search example scripts and return structured dict."""
     _ensure_index()
@@ -559,8 +560,8 @@ def search(
                 "level": entry.level,
                 "category": entry.category,
                 "summary": entry.summary,
-                "apis": entry.apis_used,
-                "snippet": extract_snippet(entry.source, terms),
+                "apis": entry.apis_used[:10],
+                "snippet": extract_snippet(entry.source, terms, max_lines=max_snippet_lines),
                 "score": score,
             }
             for score, entry in results

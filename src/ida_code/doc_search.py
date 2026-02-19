@@ -111,7 +111,7 @@ def _ensure_indexes():
         log.info("Loaded %d Python API chunks", len(_py_chunks))
 
 
-def search(query: str, max_results: int = 10) -> dict:
+def search(query: str, max_results: int = 5, max_snippet_length: int = 150) -> dict:
     """Search IDA docs and Python API sources. Returns structured dict."""
     _ensure_indexes()
 
@@ -126,14 +126,14 @@ def search(query: str, max_results: int = 10) -> dict:
     for title, text, location in _html_docs:
         score = _score(terms, title, text)
         if score > 0:
-            snippet = _excerpt(text, terms, max_len=300)
+            snippet = _excerpt(text, terms, max_len=max_snippet_length)
             results.append((score, title, snippet, f"docs: {location}"))
 
     # Search Python API chunks.
     for name, body, source_file in _py_chunks:
         score = _score(terms, name, body)
         if score > 0:
-            snippet = _excerpt(body, terms, max_len=300)
+            snippet = _excerpt(body, terms, max_len=max_snippet_length)
             results.append((score, name, snippet, f"python: {source_file}"))
 
     # Sort by score descending.

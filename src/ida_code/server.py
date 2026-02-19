@@ -143,13 +143,18 @@ def _resolve_address(identifier: str) -> int:
 
 
 @mcp.tool
-def decompile(function: str) -> dict:
+def decompile(function: str, max_length: int = 10000, offset: int = 0) -> dict:
     """Decompile a function and return pseudocode.
 
     *function* can be a name (e.g. "main", "_objc_msgSend") or a hex address
     (e.g. "0x3f08", "3f08"). The address must fall within a recognized function.
 
     Requires the Hex-Rays decompiler.
+
+    *max_length* caps the pseudocode returned (default 10000 chars).
+    *offset* starts from this character position (for paging).
+    If ``truncated`` is true, call again with ``offset=<offset + max_length>``
+    to get the next page.
     """
     if session.get_state() == session.State.NO_DATABASE:
         raise ToolError("No database is open. Call open_database first.")
@@ -178,11 +183,17 @@ def decompile(function: str) -> dict:
         raise ToolError("Decompilation returned no result.")
 
     func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
+    pseudocode = str(cfunc)
+    total_length = len(pseudocode)
+    chunk = pseudocode[offset:offset + max_length]
     return {
         "name": func_name,
         "address": f"{pfn.start_ea:#x}",
         "size": f"{pfn.end_ea - pfn.start_ea:#x}",
-        "pseudocode": str(cfunc),
+        "pseudocode": chunk,
+        "offset": offset,
+        "total_length": total_length,
+        "truncated": offset + max_length < total_length,
     }
 
 
@@ -224,15 +235,17 @@ def get_disassembly(start: str, length: int = 0x100) -> dict:
 
 
 @mcp.tool
-def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> dict:
+def list_functions(offset: int = 0, limit: int = 50, filter: str = "") -> dict:
     """List functions in the database with pagination.
 
     Returns one line per function: address, size, and name.
 
     *offset* skips the first N functions (for pagination).
-    *limit* caps the number of functions returned (max 1000).
+    *limit* caps the number of functions returned (default 50, max 1000).
     *filter* if non-empty, only includes functions whose name contains
     this substring (case-insensitive).
+
+    If more results exist, increase *offset* by *limit* to get the next page.
     """
     if session.get_state() == session.State.NO_DATABASE:
         raise ToolError("No database is open. Call open_database first.")
@@ -269,7 +282,7 @@ def list_functions(offset: int = 0, limit: int = 100, filter: str = "") -> dict:
 
 
 @mcp.tool
-def search_docs(query: str, max_results: int = 10) -> dict:
+def search_docs(query: str, max_results: int = 5, max_snippet_length: int = 150) -> dict:
     """Search IDA documentation and Python API sources.
 
     Searches two corpora:
@@ -277,14 +290,17 @@ def search_docs(query: str, max_results: int = 10) -> dict:
     - IDAPython API source files (ida_*.py function signatures and docstrings)
 
     Returns matching snippets with source attribution.
+
+    *max_snippet_length* caps each snippet (default 150 chars).
     """
-    return _search_docs(query, max_results)
+    return _search_docs(query, max_results, max_snippet_length)
 
 
 @mcp.tool
 def search_examples(
     query: str,
-    max_results: int = 10,
+    max_results: int = 5,
+    max_snippet_lines: int = 10,
     category: str = "",
     level: str = "",
 ) -> dict:
@@ -295,8 +311,10 @@ def search_examples(
 
     *category* filters: ui, disassembler, decompiler, debugger, types, misc.
     *level* filters: beginner, intermediate, advanced.
+
+    *max_snippet_lines* caps source snippets (default 10 lines).
     """
-    return _search_examples(query, max_results, category, level)
+    return _search_examples(query, max_results, category, level, max_snippet_lines)
 
 
 @mcp.resource("guidelines://standalone_script")
