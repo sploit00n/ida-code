@@ -155,9 +155,11 @@ def _collect_summary(path: str) -> dict:
             "end": f"{seg.end_ea:#x}",
         })
 
-    # Entry points
+    # Entry points (capped to avoid huge responses for symbol-heavy binaries)
+    entry_count = ida_entry.get_entry_qty()
+    max_entries = 20
     entry_points = []
-    for i in range(ida_entry.get_entry_qty()):
+    for i in range(min(entry_count, max_entries)):
         ordinal = ida_entry.get_entry_ordinal(i)
         ea = ida_entry.get_entry(ordinal)
         name = ida_entry.get_entry_name(ordinal)
@@ -172,6 +174,7 @@ def _collect_summary(path: str) -> dict:
         "bits": bits,
         "function_count": func_count,
         "segments": segments,
+        "entry_point_count": entry_count,
         "entry_points": entry_points,
     }
 
