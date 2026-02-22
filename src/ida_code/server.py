@@ -17,6 +17,7 @@ from ida_code.doc_search import search as _search_docs
 from ida_code.example_search import search as _search_examples
 from ida_code import snapshots as _snapshots
 from ida_code import structures as _structures
+from ida_code import variables as _variables
 
 mcp = FastMCP("ida-code")
 
@@ -436,6 +437,75 @@ def delete_structure(name: str) -> dict:
     Fails if the structure does not exist.
     """
     return _structures.delete_structure(name)
+
+
+@mcp.tool
+def get_variable(name: str, function: str | None = None) -> dict:
+    """Get info about a variable by name.
+
+    If *function* is provided, looks up a **local** (decompiler) variable
+    within that function.  *function* can be a name (e.g. "main") or hex
+    address (e.g. "0x3f08").
+
+    If *function* is omitted, resolves *name* as a **global** variable
+    (symbol name or address).
+
+    Requires a database to be open. Local variables require Hex-Rays.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        raise ToolError("No database is open. Call open_database first.")
+
+    import ida_idaapi
+
+    if function is not None:
+        func_ea = _resolve_address(function)
+        if func_ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve function '{function}' to an address.")
+        return _variables.get_local_variable(func_ea, name)
+    else:
+        ea = _resolve_address(name)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{name}' to an address.")
+        return _variables.get_global_variable(ea)
+
+
+@mcp.tool
+def set_variable(
+    name: str,
+    function: str | None = None,
+    new_name: str | None = None,
+    new_type: str | None = None,
+) -> dict:
+    """Rename and/or retype a variable.
+
+    If *function* is provided, modifies a **local** (decompiler) variable
+    within that function.  *function* can be a name or hex address.
+
+    If *function* is omitted, modifies a **global** variable.
+    *name* is resolved as a symbol name or address.
+
+    At least one of *new_name* or *new_type* must be provided.
+
+    Requires a database to be open. Local variables require Hex-Rays.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        raise ToolError("No database is open. Call open_database first.")
+
+    if new_name is None and new_type is None:
+        raise ToolError("At least one of new_name or new_type must be provided.")
+
+    import ida_idaapi
+
+    if function is not None:
+        func_ea = _resolve_address(function)
+        if func_ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve function '{function}' to an address.")
+        return _variables.set_local_variable(func_ea, name, new_name, new_type)
+    else:
+        ea = _resolve_address(name)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{name}' to an address.")
+        return _variables.set_global_variable(ea, new_name, new_type)
 
 
 @mcp.resource("guidelines://standalone_script")

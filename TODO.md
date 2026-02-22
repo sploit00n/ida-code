@@ -56,6 +56,7 @@
 
 - [x] Database snapshot tools — create, restore, remove snapshots for checkpointing
 - [x] Structure management tools — list, get, create, edit, delete structs/unions
+- [x] Variable management tools — get/set for local (decompiler) and global variables
 - [ ] Annotation/bookmark tools — let the agent mark up the database
 - [ ] Multi-database support if idalib ever supports it
 - [ ] Stream `execute` output incrementally for long-running scripts

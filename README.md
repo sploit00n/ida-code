@@ -322,6 +322,32 @@ Deletes a structure by name. Removes it from the database type library. Fails if
 **Parameters:**
 - `name` (str) — Structure name
 
+### `get_variable`
+
+Gets info about a local (decompiler) or global variable.
+
+**Parameters:**
+- `name` (str) — Variable name (for locals) or symbol name/address (for globals)
+- `function` (str, optional) — Function name or hex address. If provided, looks up a local variable within that function. If omitted, resolves `name` as a global.
+
+**Returns:**
+- Local: `{"name", "type", "width", "is_arg", "function", "scope": "local"}`
+- Global: `{"name", "type", "address", "scope": "global"}`
+
+Local variables require the Hex-Rays decompiler.
+
+### `set_variable`
+
+Renames and/or retypes a local (decompiler) or global variable.
+
+**Parameters:**
+- `name` (str) — Current variable name (for locals) or symbol name/address (for globals)
+- `function` (str, optional) — Function name or hex address. If provided, modifies a local variable. If omitted, modifies a global.
+- `new_name` (str, optional) — New name for the variable
+- `new_type` (str, optional) — New C type string (e.g. `"int"`, `"char *"`, `"struct foo *"`)
+
+At least one of `new_name` or `new_type` must be provided. Returns the updated variable info with `status: "modified"`.
+
 ## Resources
 
 MCP Resources provide coding guidelines and templates for writing IDAPython code. Read them via your MCP client's resource browsing capability.
@@ -344,11 +370,12 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 18 tools + 3 resources, stdio transport
+server.py              FastMCP server — 20 tools + 3 resources, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
     ├── snapshots.py       database snapshot create/restore/remove
     ├── structures.py      struct/union list/get/create/edit/delete
+    ├── variables.py       variable get/set — local (Hex-Rays) + global
     ├── doc_search.py      keyword search — HTML docs + Python API sources
     ├── example_search.py  AST-based search — 125 official IDAPython examples
     ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts
