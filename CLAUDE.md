@@ -37,11 +37,20 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 - `example_search.py` — AST-based search over 125 official IDAPython example scripts
 - `guidelines.py` — coding guideline templates (standalone scripts, plugins, IDAPython scripts)
 - `snapshots.py` — database snapshot create/restore/remove via `ida_loader` + `ida_kernwin`
+- `comments.py` — comment get/set/delete (regular, repeatable, function, anterior, posterior)
 - `structures.py` — struct/union list/get/create/edit/delete via `ida_typeinf` + `idc.parse_decls`
 - `variables.py` — variable get/set (local via `ida_hexrays`, global via `ida_name` + `ida_typeinf`)
-- `server.py` — FastMCP server with 20 tools and 3 resources (`guidelines://{target}`)
+- `server.py` — FastMCP server with 23 tools and 3 resources (`guidelines://{target}`)
 
 `__init__.py` imports `session` first to ensure `idapro` is loaded before any `ida_*` modules.
+
+## Documentation
+
+When adding or changing tools/features, update **all** docs files:
+- `CLAUDE.md` — architecture list and tool count
+- `README.md` — tool documentation, architecture tree, and tool count
+- `CHANGELOG.md` — entry under the current unreleased version
+- `TODO.md` — check off completed items or add new ones
 
 ## Key Constraints
 

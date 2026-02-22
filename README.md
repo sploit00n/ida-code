@@ -322,6 +322,46 @@ Deletes a structure by name. Removes it from the database type library. Fails if
 **Parameters:**
 - `name` (str) — Structure name
 
+### `get_comment`
+
+Gets comment(s) at an address. Can return a single comment type or all non-empty comment types at once.
+
+**Parameters:**
+- `address` (str) — Name (e.g. `"main"`) or hex address (e.g. `"0x3f08"`)
+- `comment_type` (str, default `""`) — One of: `regular`, `repeatable`, `function`, `anterior`, `posterior`, or empty string to return all non-empty types
+
+**Comment types:**
+- **regular** — inline comment on a disassembly line
+- **repeatable** — inline comment that propagates to cross-references
+- **function** — comment on the function header (address must be in a function)
+- **anterior** — multi-line block before the address
+- **posterior** — multi-line block after the address
+
+**Returns:**
+- Specific type: `{"address", "comment_type", "comment"}`
+- All types (empty string): `{"address", "regular"?, "repeatable"?, "function"?, "anterior"?, "posterior"?}` (only non-empty keys included)
+
+### `set_comment`
+
+Sets a comment at an address.
+
+**Parameters:**
+- `address` (str) — Name or hex address
+- `comment` (str) — Comment text (use `\n` for multi-line anterior/posterior)
+- `comment_type` (str, default `"regular"`) — One of: `regular`, `repeatable`, `function`, `anterior`, `posterior`
+
+**Returns:** `{"address", "comment_type", "comment", "status": "updated"}`
+
+### `delete_comment`
+
+Deletes a comment at an address.
+
+**Parameters:**
+- `address` (str) — Name or hex address
+- `comment_type` (str, default `"regular"`) — One of: `regular`, `repeatable`, `function`, `anterior`, `posterior`
+
+**Returns:** `{"address", "comment_type", "status": "deleted"}`
+
 ### `get_variable`
 
 Gets info about a local (decompiler) or global variable.
@@ -370,12 +410,13 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 20 tools + 3 resources, stdio transport
+server.py              FastMCP server — 23 tools + 3 resources, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
     ├── snapshots.py       database snapshot create/restore/remove
     ├── structures.py      struct/union list/get/create/edit/delete
     ├── variables.py       variable get/set — local (Hex-Rays) + global
+    ├── comments.py        comment get/set/delete — regular, repeatable, function, anterior, posterior
     ├── doc_search.py      keyword search — HTML docs + Python API sources
     ├── example_search.py  AST-based search — 125 official IDAPython examples
     ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts

@@ -15,6 +15,7 @@ from ida_code.config import LOG_LEVEL, MCP_AUTH_TOKEN
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
 from ida_code.example_search import search as _search_examples
+from ida_code import comments as _comments
 from ida_code import snapshots as _snapshots
 from ida_code import structures as _structures
 from ida_code import variables as _variables
@@ -506,6 +507,72 @@ def set_variable(
         if ea == ida_idaapi.BADADDR:
             raise ToolError(f"Could not resolve '{name}' to an address.")
         return _variables.set_global_variable(ea, new_name, new_type)
+
+
+@mcp.tool
+def get_comment(address: str, comment_type: str = "") -> dict:
+    """Get comment(s) at an address.
+
+    *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
+
+    *comment_type* is one of: ``regular``, ``repeatable``, ``function``,
+    ``anterior``, ``posterior``, or empty string (default) to return all
+    non-empty comment types at once.
+
+    - **regular** — inline comment on a disassembly line
+    - **repeatable** — inline comment that propagates to cross-references
+    - **function** — comment on the function header (ea must be in a function)
+    - **anterior** — multi-line block before the address
+    - **posterior** — multi-line block after the address
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        raise ToolError("No database is open. Call open_database first.")
+
+    import ida_idaapi
+
+    ea = _resolve_address(address)
+    if ea == ida_idaapi.BADADDR:
+        raise ToolError(f"Could not resolve '{address}' to an address.")
+    return _comments.get_comment(ea, comment_type)
+
+
+@mcp.tool
+def set_comment(address: str, comment: str, comment_type: str = "regular") -> dict:
+    """Set a comment at an address.
+
+    *address* can be a name or hex address.
+    *comment* is the comment text (use ``\\n`` for multi-line anterior/posterior).
+    *comment_type* is one of: ``regular`` (default), ``repeatable``,
+    ``function``, ``anterior``, ``posterior``.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        raise ToolError("No database is open. Call open_database first.")
+
+    import ida_idaapi
+
+    ea = _resolve_address(address)
+    if ea == ida_idaapi.BADADDR:
+        raise ToolError(f"Could not resolve '{address}' to an address.")
+    return _comments.set_comment(ea, comment, comment_type)
+
+
+@mcp.tool
+def delete_comment(address: str, comment_type: str = "regular") -> dict:
+    """Delete a comment at an address.
+
+    *address* can be a name or hex address.
+    *comment_type* is one of: ``regular`` (default), ``repeatable``,
+    ``function``, ``anterior``, ``posterior``.
+    """
+    if session.get_state() == session.State.NO_DATABASE:
+        raise ToolError("No database is open. Call open_database first.")
+
+    import ida_idaapi
+
+    ea = _resolve_address(address)
+    if ea == ida_idaapi.BADADDR:
+        raise ToolError(f"Could not resolve '{address}' to an address.")
+    return _comments.delete_comment(ea, comment_type)
 
 
 @mcp.resource("guidelines://standalone_script")
