@@ -19,7 +19,7 @@
 - [ ] Rank title matches higher than body matches
 - [ ] Support quoted phrases in search queries
 - [ ] Index C++ SDK headers (`$IDA_INSTALL_DIR/sdk/include/*.hpp`) for cross-referencing
-- [ ] Add search result pagination (offset parameter)
+- [~] Add search result pagination (offset parameter) — `max_results` cap exists, no offset yet
 
 ## Example Search
 
@@ -50,7 +50,7 @@
 
 - [ ] Publish to PyPI
 - [ ] Add Docker image with IDA + idalib pre-configured
-- [ ] Support SSE transport for remote usage
+- [x] Support SSE transport for remote usage
 
 ## Future Ideas
 
