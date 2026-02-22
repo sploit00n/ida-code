@@ -2,7 +2,7 @@
 name = "ida-code"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = ["fastmcp>=2.0"]
+dependencies = ["fastmcp>=2.0", "lief>=0.15"]
 description = "MCP server for AI-assisted IDAPython scripting"
 
 [project.scripts]

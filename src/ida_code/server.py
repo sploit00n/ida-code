@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
 from ida_code import guidelines as _guidelines
+from ida_code import macho as _macho
 from ida_code import session
 from ida_code.config import LOG_LEVEL, MCP_AUTH_TOKEN
 from ida_code.executor import execute as _execute
@@ -19,11 +20,25 @@ mcp = FastMCP("ida-code")
 
 
 @mcp.tool
+def list_architectures(path: str) -> list[str]:
+    """List architecture slices in a fat (universal) Mach-O binary.
+
+    Returns e.g. ["x86_64", "arm64e"]. Returns an empty list if the file
+    is not a fat Mach-O. No database needs to be open.
+
+    Use this to discover available slices before calling open_database
+    with the *arch* parameter.
+    """
+    return _macho.list_architectures(path)
+
+
+@mcp.tool
 def open_database(
     path: str,
     auto_analysis: bool = True,
     overwrite: bool = False,
     timeout: int = 0,
+    arch: str | None = None,
 ) -> dict:
     """Open a binary or IDA database via idalib.
 
@@ -36,8 +51,12 @@ def open_database(
     *timeout* limits auto-analysis wait time in seconds (default 0 = unlimited).
     When the timeout expires the database stays open with partial analysis
     and a warning is appended to the summary.
+
+    *arch* selects a specific architecture slice from a fat (universal) Mach-O
+    binary (e.g. "arm64e", "x86_64"). Use list_architectures to discover
+    available slices. Ignored for non-fat binaries.
     """
-    return session.open(path, auto_analysis, overwrite, timeout=timeout)
+    return session.open(path, auto_analysis, overwrite, timeout=timeout, arch=arch)
 
 
 @mcp.tool

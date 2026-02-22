@@ -51,15 +51,22 @@ def open(
     auto_analysis: bool = True,
     overwrite: bool = False,
     timeout: int = 0,
+    arch: str | None = None,
 ) -> dict:
     """Open a binary/database via idalib. Returns a summary dict.
 
     *timeout* limits auto-analysis wait time in seconds (0 = unlimited).
     When the timeout expires, the database remains open with partial analysis.
 
+    *arch* selects a specific architecture slice from a fat (universal) Mach-O
+    binary (e.g. "arm64e", "x86_64"). The slice is extracted to a temporary
+    thin file before opening. Ignored for non-fat binaries.
+
     Raises ``ToolError`` on failure.
     """
     from fastmcp.exceptions import ToolError
+
+    from ida_code import macho
 
     global _state, _db_path
 
@@ -67,35 +74,57 @@ def open(
     if _state == State.DATABASE_OPEN:
         close()
 
+    # If an architecture is requested, extract the slice from a fat Mach-O.
+    open_path = path
+    if arch:
+        try:
+            open_path = macho.extract_slice(path, arch)
+        except ValueError:
+            # Not a fat binary or arch not found.
+            available = macho.list_architectures(path)
+            if available:
+                raise ToolError(
+                    f"Architecture '{arch}' not found. "
+                    f"Available: {available}"
+                )
+            log.warning(
+                "arch='%s' requested but %s is not a fat Mach-O; "
+                "opening as-is",
+                arch, path,
+            )
+
     if overwrite:
-        _remove_existing_databases(path)
+        _remove_existing_databases(open_path)
 
     use_polling = auto_analysis and timeout > 0
     run_auto = auto_analysis and not use_polling
 
     log.info(
-        "Opening database: %s (auto_analysis=%s, overwrite=%s, timeout=%d)",
-        path, auto_analysis, overwrite, timeout,
+        "Opening database: %s (auto_analysis=%s, overwrite=%s, timeout=%d, arch=%s)",
+        open_path, auto_analysis, overwrite, timeout, arch,
     )
-    rc = idapro.open_database(path, run_auto)
+    rc = idapro.open_database(open_path, run_auto)
     if rc != 0:
-        log.error("open_database failed with code %d for %s", rc, path)
+        log.error("open_database failed with code %d for %s", rc, open_path)
         raise ToolError(f"open_database returned code {rc}")
 
     _state = State.DATABASE_OPEN
-    _db_path = path
+    _db_path = open_path
 
     timed_out = False
     if use_polling:
         timed_out = _wait_for_analysis(timeout)
 
-    log.info("Database opened successfully: %s", path)
+    log.info("Database opened successfully: %s", open_path)
 
     # Reset executor namespace for the new database.
     from ida_code.executor import reset
     reset()
 
-    summary = _collect_summary(path)
+    summary = _collect_summary(open_path)
+    if arch:
+        summary["arch"] = arch
+        summary["original_path"] = path
     summary["warning"] = (
         "Auto-analysis timed out \u2014 results may be incomplete."
         if timed_out
