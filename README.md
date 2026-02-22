@@ -225,6 +225,35 @@ def get_func_name(ea: ida_idaapi.ea_t) ->str:
     :returns: length of the function name"""
 ```
 
+### `list_snapshots`
+
+Lists all database snapshots. Returns snapshot IDs, descriptions, and filenames.
+
+**Parameters:** None.
+
+### `create_snapshot`
+
+Creates a database snapshot to checkpoint the current state. Use this before making destructive changes (renaming, patching, type changes) so you can roll back if needed.
+
+**Parameters:**
+- `desc` (str, default `""`) — Short description (max 128 chars)
+
+**Returns:** The new snapshot as `{"id", "desc", "filename"}`.
+
+### `restore_snapshot`
+
+Restores the database to a previous snapshot. The executor namespace is reset since the database state changed.
+
+**Parameters:**
+- `id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
+
+### `remove_snapshot`
+
+Removes a database snapshot by deleting its file from disk.
+
+**Parameters:**
+- `id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
+
 ### `search_examples`
 
 Searches the 125 official IDAPython example scripts bundled with IDA. Uses AST parsing to index imports, function definitions, and API call patterns alongside curated metadata (title, description, keywords, APIs used) from IDA's `index.md`.
@@ -272,9 +301,10 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 9 tools + 3 resources, stdio transport
+server.py              FastMCP server — 13 tools + 3 resources, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
+    ├── snapshots.py       database snapshot create/restore/remove
     ├── doc_search.py      keyword search — HTML docs + Python API sources
     ├── example_search.py  AST-based search — 125 official IDAPython examples
     ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts

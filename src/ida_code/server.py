@@ -15,6 +15,7 @@ from ida_code.config import LOG_LEVEL, MCP_AUTH_TOKEN
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
 from ida_code.example_search import search as _search_examples
+from ida_code import snapshots as _snapshots
 
 mcp = FastMCP("ida-code")
 
@@ -334,6 +335,46 @@ def search_examples(
     *max_snippet_lines* caps source snippets (default 10 lines).
     """
     return _search_examples(query, max_results, category, level, max_snippet_lines)
+
+
+@mcp.tool
+def list_snapshots() -> dict:
+    """List all database snapshots.
+
+    Returns snapshot IDs, descriptions, and filenames for the current database.
+    """
+    return _snapshots.list_snapshots()
+
+
+@mcp.tool
+def create_snapshot(desc: str = "") -> dict:
+    """Create a database snapshot to checkpoint the current state.
+
+    Snapshots let you save the database state before making destructive changes
+    (renaming, patching, type changes) and roll back if needed.
+
+    *desc* is an optional short description (max 128 chars).
+    """
+    return _snapshots.create_snapshot(desc)
+
+
+@mcp.tool
+def restore_snapshot(id: str) -> dict:
+    """Restore the database to a previous snapshot.
+
+    *id* is the snapshot ID from list_snapshots or create_snapshot.
+    The executor namespace is reset after restore since the database state changed.
+    """
+    return _snapshots.restore_snapshot(id)
+
+
+@mcp.tool
+def remove_snapshot(id: str) -> dict:
+    """Remove a database snapshot by deleting its file from disk.
+
+    *id* is the snapshot ID from list_snapshots or create_snapshot.
+    """
+    return _snapshots.remove_snapshot(id)
 
 
 @mcp.resource("guidelines://standalone_script")

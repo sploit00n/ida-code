@@ -54,6 +54,7 @@
 
 ## Future Ideas
 
+- [x] Database snapshot tools — create, restore, remove snapshots for checkpointing
 - [ ] MCP Resources for browsing IDA's type libraries
 - [ ] Annotation/bookmark tools — let the agent mark up the database
 - [ ] Multi-database support if idalib ever supports it
