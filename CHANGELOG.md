@@ -23,6 +23,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **REPL-like expression output** — `execute` now returns the `repr()` of the last expression if it's a bare expression (not an assignment or statement), just like the interactive Python prompt. No need to wrap everything in `print()`.
 - **Database snapshots** — Four new tools for checkpointing and rolling back database state: `list_snapshots`, `create_snapshot`, `restore_snapshot`, `remove_snapshot`. Built on `ida_loader.snapshot_t` and `ida_kernwin.take_database_snapshot` / `restore_database_snapshot`.
 - **`search_examples` tool** — Search 125 official IDAPython example scripts. Indexes metadata from `index.md` (title, description, keywords, APIs used, level, category) and AST-parses each `.py` file for imports, definitions, and `ida_*` API call patterns. Weighted scoring ranks API matches highest. Supports `category` and `level` filters.
+- **Structure management tools** — Five new tools for managing IDA structs and unions: `list_structures` (paginated listing with filter), `get_structure` (detailed info with C definition), `create_structure` (from C definition string via `idc.parse_decls`), `edit_structure` (replace existing definition), `delete_structure` (remove from type library).
 
 ### Changed
 

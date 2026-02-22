@@ -16,6 +16,7 @@ from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
 from ida_code.example_search import search as _search_examples
 from ida_code import snapshots as _snapshots
+from ida_code import structures as _structures
 
 mcp = FastMCP("ida-code")
 
@@ -375,6 +376,66 @@ def remove_snapshot(id: str) -> dict:
     *id* is the snapshot ID from list_snapshots or create_snapshot.
     """
     return _snapshots.remove_snapshot(id)
+
+
+@mcp.tool
+def list_structures(offset: int = 0, limit: int = 50, filter: str = "") -> dict:
+    """List structures (structs/unions) in the database with pagination.
+
+    Returns name, size, alignment, and member count for each structure.
+
+    *offset* skips the first N matching structures (for pagination).
+    *limit* caps the number returned (default 50, max 1000).
+    *filter* if non-empty, only includes structures whose name contains
+    this substring (case-insensitive).
+    """
+    return _structures.list_structures(offset, min(limit, 1000), filter)
+
+
+@mcp.tool
+def get_structure(name: str) -> dict:
+    """Get detailed info about a structure (struct/union) by name.
+
+    Returns name, size, alignment, is_union flag, member count, and the full
+    C definition with ``/* offset */`` comments on each field.
+    """
+    return _structures.get_structure(name)
+
+
+@mcp.tool
+def create_structure(definition: str) -> dict:
+    """Create a new structure from a C definition string.
+
+    *definition* is a valid C struct or union definition, e.g.:
+    ``struct foo { int x; char *y; };``
+
+    Fails if a structure with the same name already exists.
+    Returns the newly created structure details.
+    """
+    return _structures.create_structure(definition)
+
+
+@mcp.tool
+def edit_structure(definition: str) -> dict:
+    """Edit an existing structure by replacing its C definition.
+
+    *definition* is a valid C struct or union definition with the same name
+    as an existing structure. The old definition is fully replaced.
+
+    Fails if the structure does not exist.
+    Returns the updated structure details.
+    """
+    return _structures.edit_structure(definition)
+
+
+@mcp.tool
+def delete_structure(name: str) -> dict:
+    """Delete a structure (struct/union) by name.
+
+    Removes the named type from the database type library.
+    Fails if the structure does not exist.
+    """
+    return _structures.delete_structure(name)
 
 
 @mcp.resource("guidelines://standalone_script")

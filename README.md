@@ -279,6 +279,49 @@ def init_hexrays():
 ```
 ```
 
+### `list_structures`
+
+Lists structures (structs/unions) in the database with pagination. Returns name, size, alignment, and member count for each.
+
+**Parameters:**
+- `offset` (int, default `0`) — Skip the first N matching structures
+- `limit` (int, default `50`, max `1000`) — Maximum structures to return
+- `filter` (str, default `""`) — Only include structures whose name contains this substring (case-insensitive)
+
+### `get_structure`
+
+Gets detailed info about a structure by name, including its full C definition with field offset annotations.
+
+**Parameters:**
+- `name` (str) — Structure name
+
+**Returns:** `{"name", "size", "alignment", "is_union", "member_count", "definition"}` where `definition` is the C representation with `/* offset */` comments on each field.
+
+### `create_structure`
+
+Creates a new structure from a C definition string. Fails if a structure with the same name already exists.
+
+**Parameters:**
+- `definition` (str) — Valid C struct or union definition (e.g. `"struct foo { int x; char *y; };"`)
+
+**Returns:** The newly created structure details (same format as `get_structure`).
+
+### `edit_structure`
+
+Edits an existing structure by fully replacing its C definition. Fails if the structure does not exist.
+
+**Parameters:**
+- `definition` (str) — Valid C struct or union definition with the same name as an existing structure
+
+**Returns:** The updated structure details.
+
+### `delete_structure`
+
+Deletes a structure by name. Removes it from the database type library. Fails if the structure does not exist.
+
+**Parameters:**
+- `name` (str) — Structure name
+
 ## Resources
 
 MCP Resources provide coding guidelines and templates for writing IDAPython code. Read them via your MCP client's resource browsing capability.
@@ -301,10 +344,11 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 13 tools + 3 resources, stdio transport
+server.py              FastMCP server — 18 tools + 3 resources, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
     ├── snapshots.py       database snapshot create/restore/remove
+    ├── structures.py      struct/union list/get/create/edit/delete
     ├── doc_search.py      keyword search — HTML docs + Python API sources
     ├── example_search.py  AST-based search — 125 official IDAPython examples
     ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts

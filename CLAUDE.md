@@ -37,7 +37,8 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 - `example_search.py` — AST-based search over 125 official IDAPython example scripts
 - `guidelines.py` — coding guideline templates (standalone scripts, plugins, IDAPython scripts)
 - `snapshots.py` — database snapshot create/restore/remove via `ida_loader` + `ida_kernwin`
-- `server.py` — FastMCP server with 13 tools and 3 resources (`guidelines://{target}`)
+- `structures.py` — struct/union list/get/create/edit/delete via `ida_typeinf` + `idc.parse_decls`
+- `server.py` — FastMCP server with 18 tools and 3 resources (`guidelines://{target}`)
 
 `__init__.py` imports `session` first to ensure `idapro` is loaded before any `ida_*` modules.
 

@@ -55,7 +55,7 @@
 ## Future Ideas
 
 - [x] Database snapshot tools — create, restore, remove snapshots for checkpointing
-- [ ] MCP Resources for browsing IDA's type libraries
+- [x] Structure management tools — list, get, create, edit, delete structs/unions
 - [ ] Annotation/bookmark tools — let the agent mark up the database
 - [ ] Multi-database support if idalib ever supports it
 - [ ] Stream `execute` output incrementally for long-running scripts
