@@ -26,6 +26,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Structure management tools** — Five new tools for managing IDA structs and unions: `list_structures` (paginated listing with filter), `get_structure` (detailed info with C definition), `create_structure` (from C definition string via `idc.parse_decls`), `edit_structure` (replace existing definition), `delete_structure` (remove from type library).
 - **Variable management tools** — Two new tools for inspecting and modifying variables: `get_variable` (read local or global variable info) and `set_variable` (rename and/or retype). Local variables use Hex-Rays decompiler APIs (`ida_hexrays`); globals use `ida_name` and `ida_typeinf`.
 - **Comment management tools** — Three new tools for managing comments: `get_comment` (read one or all comment types at an address), `set_comment` (write a comment), `delete_comment` (remove a comment). Supports all five IDA comment types: regular, repeatable, function, anterior, and posterior.
+- **Undo/redo tools** — Three new tools for undoing and redoing database changes: `get_undo_status` (check availability and next action labels), `perform_undo` (undo one or more steps), `perform_redo` (redo one or more steps). Built on `ida_undo`. Multi-step undo/redo in a single call with partial success support.
 
 ### Changed
 

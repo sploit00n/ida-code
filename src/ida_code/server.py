@@ -18,6 +18,7 @@ from ida_code.example_search import search as _search_examples
 from ida_code import comments as _comments
 from ida_code import snapshots as _snapshots
 from ida_code import structures as _structures
+from ida_code import undo as _undo
 from ida_code import variables as _variables
 
 mcp = FastMCP("ida-code")
@@ -378,6 +379,41 @@ def remove_snapshot(id: str) -> dict:
     *id* is the snapshot ID from list_snapshots or create_snapshot.
     """
     return _snapshots.remove_snapshot(id)
+
+
+@mcp.tool
+def get_undo_status() -> dict:
+    """Check what undo/redo actions are available.
+
+    Returns whether undo and redo are possible, along with labels describing
+    the next undo/redo actions. IDA only exposes the *next* action in each
+    direction, not the full history stack.
+    """
+    return _undo.get_status()
+
+
+@mcp.tool
+def perform_undo(steps: int = 1) -> dict:
+    """Undo the last database action(s).
+
+    *steps* is how many undo steps to perform (default 1). If fewer steps
+    are available than requested, performs as many as possible (partial success).
+
+    The executor namespace is reset after undo since the database state changed.
+    """
+    return _undo.perform_undo(steps)
+
+
+@mcp.tool
+def perform_redo(steps: int = 1) -> dict:
+    """Redo the last undone database action(s).
+
+    *steps* is how many redo steps to perform (default 1). If fewer steps
+    are available than requested, performs as many as possible (partial success).
+
+    The executor namespace is reset after redo since the database state changed.
+    """
+    return _undo.perform_redo(steps)
 
 
 @mcp.tool

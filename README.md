@@ -254,6 +254,32 @@ Removes a database snapshot by deleting its file from disk.
 **Parameters:**
 - `id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
 
+### `get_undo_status`
+
+Checks what undo/redo actions are available. IDA only exposes the *next* action in each direction, not the full history stack.
+
+**Parameters:** None.
+
+**Returns:** `{"can_undo", "undo_action", "can_redo", "redo_action"}` where `undo_action` and `redo_action` are labels describing the next available action (empty string if none).
+
+### `perform_undo`
+
+Undoes the last database action(s). The executor namespace is reset after undo since the database state changed.
+
+**Parameters:**
+- `steps` (int, default `1`) — Number of undo steps to perform. If fewer steps are available than requested, performs as many as possible (partial success, not an error).
+
+**Returns:** `{"status": "undone", "steps_requested", "steps_performed", "actions", "next_undo", "next_redo"}` where `actions` is the list of action labels that were undone.
+
+### `perform_redo`
+
+Redoes the last undone database action(s). The executor namespace is reset after redo since the database state changed.
+
+**Parameters:**
+- `steps` (int, default `1`) — Number of redo steps to perform. If fewer steps are available than requested, performs as many as possible (partial success, not an error).
+
+**Returns:** `{"status": "redone", "steps_requested", "steps_performed", "actions", "next_undo", "next_redo"}` where `actions` is the list of action labels that were redone.
+
 ### `search_examples`
 
 Searches the 125 official IDAPython example scripts bundled with IDA. Uses AST parsing to index imports, function definitions, and API call patterns alongside curated metadata (title, description, keywords, APIs used) from IDA's `index.md`.
@@ -410,10 +436,11 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 23 tools + 3 resources, stdio transport
+server.py              FastMCP server — 26 tools + 3 resources, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
     ├── snapshots.py       database snapshot create/restore/remove
+    ├── undo.py            undo/redo status + perform via ida_undo
     ├── structures.py      struct/union list/get/create/edit/delete
     ├── variables.py       variable get/set — local (Hex-Rays) + global
     ├── comments.py        comment get/set/delete — regular, repeatable, function, anterior, posterior
