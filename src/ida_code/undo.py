@@ -7,15 +7,9 @@ from ida_code import session
 log = logging.getLogger(__name__)
 
 
-def _require_open() -> None:
-    """Raise ToolError if no database is open."""
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
-
-
 def get_status() -> dict:
     """Return current undo/redo availability and action labels."""
-    _require_open()
+    session.require_open()
 
     import ida_undo
 
@@ -32,7 +26,7 @@ def get_status() -> dict:
 
 def perform_undo(steps: int = 1) -> dict:
     """Undo the last action(s). Returns details of what was undone."""
-    _require_open()
+    session.require_open()
 
     if steps < 1:
         raise ToolError("steps must be at least 1.")
@@ -71,7 +65,7 @@ def perform_undo(steps: int = 1) -> dict:
 
 def perform_redo(steps: int = 1) -> dict:
     """Redo the last undone action(s). Returns details of what was redone."""
-    _require_open()
+    session.require_open()
 
     if steps < 1:
         raise ToolError("steps must be at least 1.")

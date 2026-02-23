@@ -28,10 +28,57 @@ class State(enum.Enum):
 
 _state = State.NO_DATABASE
 _db_path: str | None = None
+_db_file_path: str | None = None  # actual .i64/.idb path on disk
+_orphaned: bool = False  # True when database file vanished from disk
 
 
 def get_state() -> State:
     return _state
+
+
+def _find_database_file(path: str) -> str | None:
+    """Find the .i64/.idb database file for *path*.
+
+    Checks both naming conventions IDA uses: replace-suffix and append.
+    Returns the path if found, else None.
+    """
+    from pathlib import Path
+    p = Path(path)
+    for ext in (".i64", ".idb"):
+        for candidate in (p.with_suffix(ext), Path(str(p) + ext)):
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def require_open() -> None:
+    """Raise ``ToolError`` if no database is usable.
+
+    Checks both the state enum *and* that the database file still exists
+    on disk. If the file has been moved or deleted, resets state to
+    ``NO_DATABASE`` and raises a descriptive error instead of letting
+    idalib segfault.
+    """
+    from fastmcp.exceptions import ToolError
+
+    global _state, _db_file_path, _orphaned
+
+    if _state == State.NO_DATABASE:
+        raise ToolError("No database is open. Call open_database first.")
+
+    if _db_file_path is not None and not os.path.isfile(_db_file_path):
+        log.warning(
+            "Database file missing: %s — resetting state", _db_file_path
+        )
+        _state = State.NO_DATABASE
+        _orphaned = True
+        _db_file_path = None
+        from ida_code.executor import reset
+        reset()
+        raise ToolError(
+            "The database file has been moved or deleted. "
+            "Call open_database with the new path."
+        )
 
 
 def info() -> dict:
@@ -39,10 +86,7 @@ def info() -> dict:
 
     Raises ``ToolError`` if no database is open.
     """
-    from fastmcp.exceptions import ToolError
-
-    if _state == State.NO_DATABASE:
-        raise ToolError("No database is currently open.")
+    require_open()
     return _collect_summary(_db_path or "<unknown>")
 
 
@@ -68,7 +112,9 @@ def open(
 
     from ida_code import macho
 
-    global _state, _db_path
+    global _state, _db_path, _db_file_path, _orphaned
+
+    _orphaned = False
 
     # Close any existing database first.
     if _state == State.DATABASE_OPEN:
@@ -110,6 +156,7 @@ def open(
 
     _state = State.DATABASE_OPEN
     _db_path = open_path
+    _db_file_path = _find_database_file(open_path)
 
     timed_out = False
     if use_polling:
@@ -220,12 +267,15 @@ def _remove_existing_databases(path: str) -> None:
 
 def close() -> None:
     """Close the current database."""
-    global _state, _db_path
+    global _state, _db_path, _db_file_path, _orphaned
     if _state == State.DATABASE_OPEN:
         log.info("Closing database")
-        idapro.close_database()
+        if not _orphaned:
+            idapro.close_database()
         _state = State.NO_DATABASE
         _db_path = None
+        _db_file_path = None
+        _orphaned = False
         from ida_code.executor import reset
         reset()
 

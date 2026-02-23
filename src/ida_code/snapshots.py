@@ -8,12 +8,6 @@ from ida_code import session
 log = logging.getLogger(__name__)
 
 
-def _require_open() -> None:
-    """Raise ToolError if no database is open."""
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
-
-
 def _build_snapshot_list():
     """Return list of snapshot_t from the snapshot tree."""
     import ida_loader
@@ -42,7 +36,7 @@ def _to_dict(ss) -> dict:
 
 def list_snapshots() -> dict:
     """List all snapshots for the current database."""
-    _require_open()
+    session.require_open()
     snapshots = _build_snapshot_list()
     return {
         "snapshots": [_to_dict(ss) for ss in snapshots],
@@ -52,7 +46,7 @@ def list_snapshots() -> dict:
 
 def create_snapshot(desc: str = "") -> dict:
     """Create a new database snapshot."""
-    _require_open()
+    session.require_open()
 
     import ida_kernwin
     import ida_loader
@@ -70,7 +64,7 @@ def create_snapshot(desc: str = "") -> dict:
 
 def restore_snapshot(snapshot_id: str) -> dict:
     """Restore the database to a previous snapshot."""
-    _require_open()
+    session.require_open()
 
     import ida_kernwin
 
@@ -101,7 +95,7 @@ def restore_snapshot(snapshot_id: str) -> dict:
 
 def remove_snapshot(snapshot_id: str) -> dict:
     """Remove a snapshot by deleting its file from disk."""
-    _require_open()
+    session.require_open()
 
     snapshots = _build_snapshot_list()
     ss = _find_by_id(snapshots, snapshot_id)

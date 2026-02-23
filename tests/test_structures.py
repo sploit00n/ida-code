@@ -1,7 +1,7 @@
 """Unit tests for ida_code.structures.
 
-These tests work without idalib — they only test pure-Python helpers
-and the _require_open guard (mocked).
+These tests work without idalib — they test pure-Python helpers
+and session.require_open delegation (mocked).
 """
 
 from unittest.mock import patch
@@ -57,13 +57,29 @@ class TestExtractName:
 
 class TestRequireOpen:
     @patch("ida_code.structures.session")
-    def test_raises_when_no_db(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.NO_DATABASE
+    def test_list_structures_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
         with pytest.raises(ToolError, match="No database is open"):
-            structures._require_open()
+            structures.list_structures()
+        mock_session.require_open.assert_called_once()
 
     @patch("ida_code.structures.session")
-    def test_passes_when_db_open(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.OPEN
-        # Should not raise.
-        structures._require_open()
+    def test_get_structure_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            structures.get_structure("foo")
+        mock_session.require_open.assert_called_once()
+
+    @patch("ida_code.structures.session")
+    def test_create_structure_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            structures.create_structure("struct foo { int x; };")
+        mock_session.require_open.assert_called_once()
+
+    @patch("ida_code.structures.session")
+    def test_delete_structure_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            structures.delete_structure("foo")
+        mock_session.require_open.assert_called_once()

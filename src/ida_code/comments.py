@@ -11,12 +11,6 @@ log = logging.getLogger(__name__)
 _COMMENT_TYPES = {"regular", "repeatable", "function", "anterior", "posterior"}
 
 
-def _require_open() -> None:
-    """Raise ToolError if no database is open."""
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
-
-
 def _validate_comment_type(comment_type: str, allow_empty: bool = False) -> None:
     """Raise ToolError if comment_type is not recognized."""
     if allow_empty and comment_type == "":
@@ -76,7 +70,7 @@ def get_comment(ea: int, comment_type: str = "") -> dict:
     When *comment_type* is empty, returns all non-empty comment types.
     When a specific type is given, returns just that type.
     """
-    _require_open()
+    session.require_open()
     _validate_comment_type(comment_type, allow_empty=True)
 
     import idc
@@ -127,7 +121,7 @@ def get_comment(ea: int, comment_type: str = "") -> dict:
 
 def set_comment(ea: int, comment: str, comment_type: str = "regular") -> dict:
     """Set a comment at an address."""
-    _require_open()
+    session.require_open()
     _validate_comment_type(comment_type)
 
     import idc
@@ -161,7 +155,7 @@ def set_comment(ea: int, comment: str, comment_type: str = "regular") -> dict:
 
 def delete_comment(ea: int, comment_type: str = "regular") -> dict:
     """Delete a comment at an address."""
-    _require_open()
+    session.require_open()
     _validate_comment_type(comment_type)
 
     import idc

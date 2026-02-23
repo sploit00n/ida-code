@@ -8,6 +8,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Database file guard** — Before every IDA API call, `session.require_open()` now checks that the `.i64`/`.idb` database file still exists on disk. If the file has been moved or deleted, the server resets internal state and returns a clean `ToolError` instead of letting idalib segfault and crash the process. All 26 tools that require an open database use this centralized check.
+
 - **`open_database` `overwrite` flag** — Delete existing `.i64`/`.idb` database files before opening, forcing a fresh analysis from the original binary.
 - **`close_database` tool** — Explicitly close the current database and free resources. Clears the executor namespace.
 - **`execute_file` tool** — Run IDAPython script files directly by path. Optional `args` parameter for inline follow-up code in the same namespace.

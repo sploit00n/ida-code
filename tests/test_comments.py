@@ -1,6 +1,6 @@
 """Unit tests for ida_code.comments.
 
-These tests work without idalib — they only test the _require_open guard
+These tests work without idalib — they test session.require_open delegation
 and comment_type validation (mocked).
 """
 
@@ -14,16 +14,25 @@ from ida_code import comments
 
 class TestRequireOpen:
     @patch("ida_code.comments.session")
-    def test_raises_when_no_db(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.NO_DATABASE
+    def test_get_comment_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
         with pytest.raises(ToolError, match="No database is open"):
-            comments._require_open()
+            comments.get_comment(0x1000)
+        mock_session.require_open.assert_called_once()
 
     @patch("ida_code.comments.session")
-    def test_passes_when_db_open(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.OPEN
-        # Should not raise.
-        comments._require_open()
+    def test_set_comment_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            comments.set_comment(0x1000, "test")
+        mock_session.require_open.assert_called_once()
+
+    @patch("ida_code.comments.session")
+    def test_delete_comment_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            comments.delete_comment(0x1000)
+        mock_session.require_open.assert_called_once()
 
 
 class TestValidateCommentType:

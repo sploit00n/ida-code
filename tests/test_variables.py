@@ -1,6 +1,6 @@
 """Unit tests for ida_code.variables.
 
-These tests work without idalib — they only test the _require_open guard
+These tests work without idalib — they test session.require_open delegation
 (mocked).
 """
 
@@ -14,13 +14,29 @@ from ida_code import variables
 
 class TestRequireOpen:
     @patch("ida_code.variables.session")
-    def test_raises_when_no_db(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.NO_DATABASE
+    def test_get_local_variable_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
         with pytest.raises(ToolError, match="No database is open"):
-            variables._require_open()
+            variables.get_local_variable(0x1000, "var")
+        mock_session.require_open.assert_called_once()
 
     @patch("ida_code.variables.session")
-    def test_passes_when_db_open(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.OPEN
-        # Should not raise.
-        variables._require_open()
+    def test_get_global_variable_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            variables.get_global_variable(0x1000)
+        mock_session.require_open.assert_called_once()
+
+    @patch("ida_code.variables.session")
+    def test_set_local_variable_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            variables.set_local_variable(0x1000, "var", new_name="x")
+        mock_session.require_open.assert_called_once()
+
+    @patch("ida_code.variables.session")
+    def test_set_global_variable_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            variables.set_global_variable(0x1000, new_name="x")
+        mock_session.require_open.assert_called_once()

@@ -13,15 +13,25 @@ from ida_code import undo
 
 class TestRequireOpen:
     @patch("ida_code.undo.session")
-    def test_raises_when_no_db(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.NO_DATABASE
+    def test_get_status_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
         with pytest.raises(ToolError, match="No database is open"):
-            undo._require_open()
+            undo.get_status()
+        mock_session.require_open.assert_called_once()
 
     @patch("ida_code.undo.session")
-    def test_passes_when_db_open(self, mock_session):
-        mock_session.get_state.return_value = mock_session.State.DATABASE_OPEN
-        undo._require_open()
+    def test_perform_undo_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            undo.perform_undo()
+        mock_session.require_open.assert_called_once()
+
+    @patch("ida_code.undo.session")
+    def test_perform_redo_calls_require_open(self, mock_session):
+        mock_session.require_open.side_effect = ToolError("No database is open.")
+        with pytest.raises(ToolError, match="No database is open"):
+            undo.perform_redo()
+        mock_session.require_open.assert_called_once()
 
 
 class TestGetStatus:

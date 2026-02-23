@@ -9,12 +9,6 @@ from ida_code import session
 log = logging.getLogger(__name__)
 
 
-def _require_open() -> None:
-    """Raise ToolError if no database is open."""
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
-
-
 def _decompile_func(func_ea: int):
     """Decompile the function at *func_ea*, returning a cfunc_t.
 
@@ -115,7 +109,7 @@ def _parse_type(type_str: str):
 
 def get_local_variable(func_ea: int, name: str) -> dict:
     """Get info about a local (decompiler) variable."""
-    _require_open()
+    session.require_open()
 
     cfunc = _decompile_func(func_ea)
     lv = _find_lvar(cfunc, name)
@@ -124,7 +118,7 @@ def get_local_variable(func_ea: int, name: str) -> dict:
 
 def get_global_variable(ea: int) -> dict:
     """Get info about a global variable/name at *ea*."""
-    _require_open()
+    session.require_open()
     return _global_to_dict(ea)
 
 
@@ -135,7 +129,7 @@ def set_local_variable(
     new_type: str | None = None,
 ) -> dict:
     """Rename and/or retype a local (decompiler) variable."""
-    _require_open()
+    session.require_open()
 
     import ida_hexrays
     import ida_funcs
@@ -189,7 +183,7 @@ def set_global_variable(
     new_type: str | None = None,
 ) -> dict:
     """Rename and/or retype a global variable/name."""
-    _require_open()
+    session.require_open()
 
     import ida_name
     import ida_typeinf

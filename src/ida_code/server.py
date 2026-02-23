@@ -80,8 +80,7 @@ def close_database() -> dict:
 
     The executor namespace is cleared. No database will be open after this call.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is currently open.")
+    session.require_open()
     session.close()
     return {"status": "closed"}
 
@@ -98,8 +97,7 @@ def execute(code: str, timeout: int = 30) -> dict:
 
     *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
     text = _execute(code, timeout=timeout)
     return {"output": text, "truncated": len(text) >= 50000}
 
@@ -116,8 +114,7 @@ def execute_file(path: str, args: str | None = None, timeout: int = 30) -> dict:
 
     *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     p = Path(path)
     if not p.is_file():
@@ -180,8 +177,7 @@ def decompile(function: str, max_length: int = 10000, offset: int = 0) -> dict:
     If ``truncated`` is true, call again with ``offset=<offset + max_length>``
     to get the next page.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_funcs
     import ida_hexrays
@@ -229,8 +225,7 @@ def get_disassembly(start: str, length: int = 0x100) -> dict:
     decimal "16136"). *length* is the number of bytes from start to disassemble
     (default 256, capped at 64 KB).
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_idaapi
     import idc
@@ -271,8 +266,7 @@ def list_functions(offset: int = 0, limit: int = 50, filter: str = "") -> dict:
 
     If more results exist, increase *offset* by *limit* to get the next page.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_funcs
     import idautils
@@ -489,8 +483,7 @@ def get_variable(name: str, function: str | None = None) -> dict:
 
     Requires a database to be open. Local variables require Hex-Rays.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_idaapi
 
@@ -525,8 +518,7 @@ def set_variable(
 
     Requires a database to be open. Local variables require Hex-Rays.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     if new_name is None and new_type is None:
         raise ToolError("At least one of new_name or new_type must be provided.")
@@ -561,8 +553,7 @@ def get_comment(address: str, comment_type: str = "") -> dict:
     - **anterior** — multi-line block before the address
     - **posterior** — multi-line block after the address
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_idaapi
 
@@ -581,8 +572,7 @@ def set_comment(address: str, comment: str, comment_type: str = "regular") -> di
     *comment_type* is one of: ``regular`` (default), ``repeatable``,
     ``function``, ``anterior``, ``posterior``.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_idaapi
 
@@ -600,8 +590,7 @@ def delete_comment(address: str, comment_type: str = "regular") -> dict:
     *comment_type* is one of: ``regular`` (default), ``repeatable``,
     ``function``, ``anterior``, ``posterior``.
     """
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
+    session.require_open()
 
     import ida_idaapi
 

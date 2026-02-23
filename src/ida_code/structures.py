@@ -12,12 +12,6 @@ log = logging.getLogger(__name__)
 _NAME_RE = re.compile(r"(?:struct|union)\s+(\w+)\s*\{")
 
 
-def _require_open() -> None:
-    """Raise ToolError if no database is open."""
-    if session.get_state() == session.State.NO_DATABASE:
-        raise ToolError("No database is open. Call open_database first.")
-
-
 def _extract_name(c_code: str) -> str:
     """Extract the struct/union name from a C definition string.
 
@@ -117,7 +111,7 @@ def _struct_to_dict(name: str) -> dict:
 
 def list_structures(offset: int = 0, limit: int = 50, filter: str = "") -> dict:
     """List structures in the database with pagination."""
-    _require_open()
+    session.require_open()
 
     import ida_typeinf
     import idautils
@@ -165,13 +159,13 @@ def list_structures(offset: int = 0, limit: int = 50, filter: str = "") -> dict:
 
 def get_structure(name: str) -> dict:
     """Get detailed info about a structure by name."""
-    _require_open()
+    session.require_open()
     return _struct_to_dict(name)
 
 
 def create_structure(definition: str) -> dict:
     """Create a new structure from a C definition string."""
-    _require_open()
+    session.require_open()
 
     import ida_typeinf
     import idc
@@ -194,7 +188,7 @@ def create_structure(definition: str) -> dict:
 
 def edit_structure(definition: str) -> dict:
     """Edit an existing structure by replacing its definition."""
-    _require_open()
+    session.require_open()
 
     import ida_typeinf
     import idc
@@ -217,7 +211,7 @@ def edit_structure(definition: str) -> dict:
 
 def delete_structure(name: str) -> dict:
     """Delete a structure by name."""
-    _require_open()
+    session.require_open()
 
     import ida_typeinf
 

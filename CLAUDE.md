@@ -31,7 +31,7 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 ## Architecture
 
 - `config.py` — env-based config (`IDA_INSTALL_DIR`)
-- `session.py` — idalib lifecycle (imports `idapro` at module level — must be first)
+- `session.py` — idalib lifecycle (imports `idapro` at module level — must be first); `require_open()` validates state + database file existence before every IDA API call
 - `executor.py` — `exec()` with persistent namespace and stdout/stderr capture
 - `doc_search.py` — keyword search over IDA docs + Python API sources
 - `example_search.py` — AST-based search over 125 official IDAPython example scripts
