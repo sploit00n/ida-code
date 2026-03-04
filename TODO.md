@@ -59,6 +59,7 @@
 - [x] Variable management tools — get/set for local (decompiler) and global variables
 - [x] Comment management tools — get/set/delete for regular, repeatable, function, anterior, posterior
 - [x] Undo/redo tools — get status, perform undo/redo with multi-step support
+- [x] MCP prompts — `reverse_engineer` workflow guide and `create_script` coding guidelines
 - [ ] Bookmark tools — let the agent mark up the database with bookmarks
 - [ ] Multi-database support if idalib ever supports it
 - [ ] Stream `execute` output incrementally for long-running scripts

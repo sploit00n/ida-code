@@ -424,6 +424,24 @@ MCP Resources provide coding guidelines and templates for writing IDAPython code
 | `guidelines://plugin` | IDA plugins — `plugin_t` subclass, actions, hooks |
 | `guidelines://idapython_script` | Classic IDAPython scripts — in-GUI scripts via File > Script File |
 
+## Prompts
+
+MCP Prompts are reusable instruction templates that AI agents can request to guide their behavior. List them via your MCP client's prompt listing capability.
+
+### `reverse_engineer`
+
+A comprehensive workflow guide for analyzing an unknown binary. Covers five phases: reconnaissance (opening, surveying, enumerating strings/imports), triage (filtering by name patterns, size, string xrefs), deep analysis (decompilation, cross-references, disassembly, structure recovery), annotation (renaming, retyping, commenting, defining structures), and iteration (re-decompile, verify, expand scope). Includes best practices for snapshots, incremental work, and namespace persistence.
+
+**Parameters:** None.
+
+### `create_script`
+
+Returns coding guidelines for the specified script type plus IDAPython best practices (error handling, performance, naming conventions, common pitfalls, MCP tool usage for testing).
+
+**Parameters:**
+- `target` (str, required) — One of: `standalone_script`, `plugin`, `idapython_script`
+- `description` (str, optional) — What the script should do (appended as a task description)
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -436,7 +454,7 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 26 tools + 3 resources, stdio transport
+server.py              FastMCP server — 26 tools + 3 resources + 2 prompts, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
     ├── snapshots.py       database snapshot create/restore/remove
@@ -447,6 +465,7 @@ server.py              FastMCP server — 26 tools + 3 resources, stdio transpor
     ├── doc_search.py      keyword search — HTML docs + Python API sources
     ├── example_search.py  AST-based search — 125 official IDAPython examples
     ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts
+    ├── prompts.py         MCP prompt templates — RE workflow, script creation guide
     └── config.py          environment-based configuration
 ```
 

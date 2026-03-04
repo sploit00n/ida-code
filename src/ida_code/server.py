@@ -20,6 +20,7 @@ from ida_code import snapshots as _snapshots
 from ida_code import structures as _structures
 from ida_code import undo as _undo
 from ida_code import variables as _variables
+from ida_code import prompts as _prompts
 
 mcp = FastMCP("ida-code")
 
@@ -616,6 +617,26 @@ def plugin_guidelines() -> str:
 def idapython_script_guidelines() -> str:
     """Architecture and boilerplate for IDAPython scripts run inside IDA GUI."""
     return _guidelines.get("idapython_script")
+
+
+@mcp.prompt
+def reverse_engineer() -> str:
+    """Comprehensive workflow for reverse engineering a binary with ida-code.
+
+    Covers reconnaissance, triage, deep analysis, annotation, and iteration
+    using the full set of MCP tools.
+    """
+    return _prompts.reverse_engineer()
+
+
+@mcp.prompt
+def create_script(target: str, description: str | None = None) -> str:
+    """Coding guidelines and best practices for writing IDAPython scripts.
+
+    *target* is one of: ``standalone_script``, ``plugin``, ``idapython_script``.
+    *description* is an optional description of what the script should do.
+    """
+    return _prompts.create_script(target, description)
 
 
 def _parse_host_port(value: str) -> tuple[str, int]:

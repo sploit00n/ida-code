@@ -29,6 +29,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Variable management tools** — Two new tools for inspecting and modifying variables: `get_variable` (read local or global variable info) and `set_variable` (rename and/or retype). Local variables use Hex-Rays decompiler APIs (`ida_hexrays`); globals use `ida_name` and `ida_typeinf`.
 - **Comment management tools** — Three new tools for managing comments: `get_comment` (read one or all comment types at an address), `set_comment` (write a comment), `delete_comment` (remove a comment). Supports all five IDA comment types: regular, repeatable, function, anterior, and posterior.
 - **Undo/redo tools** — Three new tools for undoing and redoing database changes: `get_undo_status` (check availability and next action labels), `perform_undo` (undo one or more steps), `perform_redo` (redo one or more steps). Built on `ida_undo`. Multi-step undo/redo in a single call with partial success support.
+- **MCP prompts** — Two new MCP prompts for guided workflows: `reverse_engineer` (comprehensive five-phase binary analysis workflow covering reconnaissance, triage, deep analysis, annotation, and iteration) and `create_script` (coding guidelines for standalone scripts, plugins, or IDAPython scripts plus IDAPython best practices for error handling, performance, naming conventions, and common pitfalls).
 
 ### Changed
 
