@@ -8,7 +8,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Database file guard** — Before every IDA API call, `session.require_open()` now checks that the `.i64`/`.idb` database file still exists on disk. If the file has been moved or deleted, the server resets internal state and returns a clean `ToolError` instead of letting idalib segfault and crash the process. All 26 tools that require an open database use this centralized check.
+- **Server instructions** — Added `instructions` parameter to FastMCP server with workflow guidance (open → list → decompile → annotate → iterate). Visible to LLMs in the MCP `initialize` response.
+- **Literal types for enum parameters** — `comment_type`, `category`, and `level` parameters now use `Literal` types, exposing valid values in the JSON schema `enum` field instead of only in docstrings.
+- **`rename_function` tool** — Rename a function by name or address. Returns old and new names.
+- **`retype_function` tool** — Change a function's type signature with a C type string.
+- **`get_xrefs_to` tool** — Get cross-references to an address (who calls/references this?). Returns typed xref list with human-readable type names.
+- **`get_xrefs_from` tool** — Get cross-references from an address (what does this call/reference?).
+- **`get_strings` tool** — List strings in the database with min-length and filter options.
+- **`get_imports` tool** — List all imported functions grouped by module.
+- **`get_exports` tool** — List all exported functions/symbols with ordinals.
+- **Database file guard** — Before every IDA API call, `session.require_open()` now checks that the `.i64`/`.idb` database file still exists on disk. If the file has been moved or deleted, the server resets internal state and returns a clean `ToolError` instead of letting idalib segfault and crash the process. All tools that require an open database use this centralized check.
 
 - **`open_database` `overwrite` flag** — Delete existing `.i64`/`.idb` database files before opening, forcing a fresh analysis from the original binary.
 - **`close_database` tool** — Explicitly close the current database and free resources. Clears the executor namespace.
@@ -33,10 +42,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **`remove_snapshot` → `delete_snapshot`** — Renamed for consistency with `delete_structure` and `delete_comment`.
+- **`filter` → `name_filter`** — Renamed in `list_functions` and `list_structures` to avoid shadowing the Python builtin and clarify semantics.
+- **`id` → `snapshot_id`** — Renamed in `restore_snapshot` and `delete_snapshot` to avoid shadowing the Python builtin and be self-documenting.
+- **`function` → `scope`** — Renamed in `get_variable` and `set_variable` to clarify it's the containing scope, not the target variable.
+- **Tool descriptions** — All 30 tools that require an open database now say "Requires an open database" in the first line. Added `Returns:` lines listing dict keys. Enriched `execute` description with exhaustive pre-imported module list. Improved `search_docs` and `search_examples` descriptions to clarify when and why to use them.
+- **`reverse_engineer` prompt** — Updated to reference new dedicated tools (`get_strings`, `get_imports`, `get_exports`, `get_xrefs_to`, `get_xrefs_from`, `rename_function`, `retype_function`) instead of raw `execute` boilerplate. Recommends dedicated tools over `execute` where available.
 - **`execute` behavior** — Last-expression values are now auto-printed. `None` results are suppressed. Explicit `print()` calls still work as before.
-
-### Changed
-
 - **Auto-import idalib on startup** — `idapro` is now loaded automatically from `IDA_INSTALL_DIR/idalib/python/` and `IDADIR` is set via `os.environ.setdefault`. No manual `pip install` or `py-activate-idalib.py` needed.
 
 ## [0.1.0] - 2026-02-10

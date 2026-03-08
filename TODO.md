@@ -60,6 +60,10 @@
 - [x] Comment management tools — get/set/delete for regular, repeatable, function, anterior, posterior
 - [x] Undo/redo tools — get status, perform undo/redo with multi-step support
 - [x] MCP prompts — `reverse_engineer` workflow guide and `create_script` coding guidelines
+- [x] Cross-reference tools — `get_xrefs_to`, `get_xrefs_from` for navigating call/data references
+- [x] String listing tool — `get_strings` for finding strings in the database
+- [x] Import/export tools — `get_imports`, `get_exports` for binary interface discovery
+- [x] Function rename/retype tools — `rename_function`, `retype_function` as dedicated tools
 - [ ] Bookmark tools — let the agent mark up the database with bookmarks
 - [ ] Multi-database support if idalib ever supports it
 - [ ] Stream `execute` output incrementally for long-running scripts

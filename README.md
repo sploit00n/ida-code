@@ -49,6 +49,15 @@ IDA_INSTALL_DIR=/opt/ida-pro-9.2 uv run --directory /path/to/ida-code ida-code
 
 ## Tools
 
+### `list_architectures`
+
+Lists architecture slices in a fat (universal) Mach-O binary. Use this to discover available slices before calling `open_database` with the `arch` parameter. No database needs to be open.
+
+**Parameters:**
+- `path` (str) — Path to a Mach-O binary
+
+**Returns:** List of architecture strings (e.g. `["x86_64", "arm64e"]`). Empty list if not a fat Mach-O.
+
 ### `open_database`
 
 Opens a binary or existing IDA database. If a database is already open, it's closed first (idalib is single-threaded — one database at a time).
@@ -182,14 +191,24 @@ int __fastcall main(int argc, const char **argv, const char **envp)
 - Address not within a recognized function
 - Hex-Rays decompiler not available or decompilation failure
 
+### `get_disassembly`
+
+Gets disassembly for an address range.
+
+**Parameters:**
+- `start` (str) — Name (e.g. `"main"`) or address (hex `"0x3f08"` / `"3f08"`, decimal `"16136"`)
+- `length` (int, default `256`) — Number of bytes from start to disassemble (capped at 64 KB)
+
+**Returns:** `{"start", "end", "count", "instructions": [{"address", "disasm"}]}`
+
 ### `list_functions`
 
 Lists functions in the database with pagination. Returns one line per function with address, size, and name.
 
 **Parameters:**
 - `offset` (int, default `0`) — Skip the first N functions (for pagination)
-- `limit` (int, default `100`, max `1000`) — Maximum functions to return
-- `filter` (str, default `""`) — Only include functions whose name contains this substring (case-insensitive)
+- `limit` (int, default `50`, max `1000`) — Maximum functions to return
+- `name_filter` (str, default `""`) — Only include functions whose name contains this substring (case-insensitive)
 
 **Example output:**
 ```
@@ -245,14 +264,14 @@ Creates a database snapshot to checkpoint the current state. Use this before mak
 Restores the database to a previous snapshot. The executor namespace is reset since the database state changed.
 
 **Parameters:**
-- `id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
+- `snapshot_id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
 
-### `remove_snapshot`
+### `delete_snapshot`
 
-Removes a database snapshot by deleting its file from disk.
+Deletes a database snapshot by removing its file from disk.
 
 **Parameters:**
-- `id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
+- `snapshot_id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
 
 ### `get_undo_status`
 
@@ -312,7 +331,7 @@ Lists structures (structs/unions) in the database with pagination. Returns name,
 **Parameters:**
 - `offset` (int, default `0`) — Skip the first N matching structures
 - `limit` (int, default `50`, max `1000`) — Maximum structures to return
-- `filter` (str, default `""`) — Only include structures whose name contains this substring (case-insensitive)
+- `name_filter` (str, default `""`) — Only include structures whose name contains this substring (case-insensitive)
 
 ### `get_structure`
 
@@ -388,13 +407,80 @@ Deletes a comment at an address.
 
 **Returns:** `{"address", "comment_type", "status": "deleted"}`
 
+### `rename_function`
+
+Renames a function.
+
+**Parameters:**
+- `function` (str) — Function name (e.g. `"sub_3f08"`) or hex address (e.g. `"0x3f08"`)
+- `new_name` (str) — New function name
+
+**Returns:** `{"address", "old_name", "new_name", "status": "renamed"}`
+
+### `retype_function`
+
+Changes a function's type signature.
+
+**Parameters:**
+- `function` (str) — Function name or hex address
+- `new_type` (str) — C function type string (e.g. `"int __fastcall(int argc, char **argv)"`)
+
+**Returns:** `{"address", "name", "old_type", "new_type", "status": "retyped"}`
+
+### `get_xrefs_to`
+
+Gets cross-references to an address (who references this?).
+
+**Parameters:**
+- `address` (str) — Name (e.g. `"main"`) or hex address (e.g. `"0x3f08"`)
+- `max_results` (int, default `100`) — Maximum xrefs to return
+
+**Returns:** `{"address", "xrefs": [{"from", "type"}], "count", "truncated"}`
+
+### `get_xrefs_from`
+
+Gets cross-references from an address (what does this reference?).
+
+**Parameters:**
+- `address` (str) — Name (e.g. `"main"`) or hex address (e.g. `"0x3f08"`)
+- `max_results` (int, default `100`) — Maximum xrefs to return
+
+**Returns:** `{"address", "xrefs": [{"to", "type"}], "count", "truncated"}`
+
+### `get_strings`
+
+Lists strings found in the database.
+
+**Parameters:**
+- `min_length` (int, default `5`) — Minimum string length to include
+- `max_results` (int, default `200`) — Maximum strings to return
+- `name_filter` (str, default `""`) — Only include strings containing this substring (case-insensitive)
+
+**Returns:** `{"strings": [{"address", "value", "length", "type"}], "count", "truncated"}`
+
+### `get_imports`
+
+Lists all imported functions grouped by module.
+
+**Parameters:** None.
+
+**Returns:** `{"modules": [{"name", "imports": [{"address", "name", "ordinal"}]}], "total_imports"}`
+
+### `get_exports`
+
+Lists all exported functions/symbols.
+
+**Parameters:** None.
+
+**Returns:** `{"exports": [{"address", "name", "ordinal"}], "count"}`
+
 ### `get_variable`
 
 Gets info about a local (decompiler) or global variable.
 
 **Parameters:**
 - `name` (str) — Variable name (for locals) or symbol name/address (for globals)
-- `function` (str, optional) — Function name or hex address. If provided, looks up a local variable within that function. If omitted, resolves `name` as a global.
+- `scope` (str, optional) — Function name or hex address. If provided, looks up a local variable within that function. If omitted, resolves `name` as a global.
 
 **Returns:**
 - Local: `{"name", "type", "width", "is_arg", "function", "scope": "local"}`
@@ -408,7 +494,7 @@ Renames and/or retypes a local (decompiler) or global variable.
 
 **Parameters:**
 - `name` (str) — Current variable name (for locals) or symbol name/address (for globals)
-- `function` (str, optional) — Function name or hex address. If provided, modifies a local variable. If omitted, modifies a global.
+- `scope` (str, optional) — Function name or hex address. If provided, modifies a local variable. If omitted, modifies a global.
 - `new_name` (str, optional) — New name for the variable
 - `new_type` (str, optional) — New C type string (e.g. `"int"`, `"char *"`, `"struct foo *"`)
 
@@ -454,10 +540,10 @@ Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/
 ## Architecture
 
 ```
-server.py              FastMCP server — 26 tools + 3 resources + 2 prompts, stdio transport
+server.py              FastMCP server — 35 tools + 3 resources + 2 prompts, stdio transport
     ├── session.py         idalib lifecycle — open/close database, state machine
     ├── executor.py        exec() engine — persistent namespace, output capture
-    ├── snapshots.py       database snapshot create/restore/remove
+    ├── snapshots.py       database snapshot create/restore/delete
     ├── undo.py            undo/redo status + perform via ida_undo
     ├── structures.py      struct/union list/get/create/edit/delete
     ├── variables.py       variable get/set — local (Hex-Rays) + global

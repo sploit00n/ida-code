@@ -17,47 +17,27 @@ available slices, then pass the desired `arch` to `open_database`.
 2. **Survey the database** — Call `get_database_info` to see the processor type, \
 bitness, segments, and entry points.
 3. **List functions** — Use `list_functions` to browse the function table. Start \
-with a small `limit` to get an overview, then paginate or `filter` by name.
-4. **Enumerate strings** — Run string enumeration via `execute`:
-```python
-for s in idautils.Strings():
-    print(f"{s.ea:#x}  {ida_bytes.get_strlit_contents(s.ea, s.length, s.strtype)}")
-```
-5. **Check imports/exports** — Use `execute` to list imported and exported symbols:
-```python
-import ida_nalt, ida_entry
-# Imports
-nimps = ida_nalt.get_import_module_qty()
-for i in range(nimps):
-    name = ida_nalt.get_import_module_name(i)
-    print(f"Module: {name}")
-
-# Exports
-for i in range(ida_entry.get_entry_qty()):
-    ordinal = ida_entry.get_entry_ordinal(i)
-    ea = ida_entry.get_entry(ordinal)
-    name = ida_entry.get_entry_name(ordinal)
-    print(f"  {ea:#x}  {name}")
-```
+with a small `limit` to get an overview, then paginate or use `name_filter`.
+4. **Enumerate strings** — Use `get_strings` to list strings in the database. \
+It searches both ASCII and UTF-16 strings. Use `name_filter` to search for \
+specific content and `min_length` to filter out noise.
+5. **Check imports/exports** — Use `get_imports` to list imported functions \
+grouped by module, and `get_exports` to list exported symbols.
 
 ## Phase 2: Triage
 
 Prioritize which functions to analyze first.
 
-- **Name-based filtering** — Use `list_functions` with `filter` to find functions \
-related to security (`auth`, `crypt`, `hash`, `verify`, `sign`, `key`), parsing \
-(`parse`, `decode`, `deserialize`, `read`, `load`), networking (`send`, `recv`, \
-`connect`, `socket`, `http`), or file I/O (`open`, `write`, `fopen`, `mmap`).
+- **Name-based filtering** — Use `list_functions` with `name_filter` to find \
+functions related to security (`auth`, `crypt`, `hash`, `verify`, `sign`, \
+`key`), parsing (`parse`, `decode`, `deserialize`, `read`, `load`), networking \
+(`send`, `recv`, `connect`, `socket`, `http`), or file I/O (`open`, `write`, \
+`fopen`, `mmap`).
 - **Size-based prioritization** — Large functions often contain the most logic. \
 Sort by size to find the most complex code.
 - **String cross-references** — Interesting strings (error messages, format \
-strings, URLs, file paths) often lead to important code. Use `execute` to trace \
-xrefs from strings to functions:
-```python
-for xref in idautils.XrefsTo(string_ea):
-    fname = ida_funcs.get_func_name(xref.frm)
-    print(f"  referenced from {xref.frm:#x} ({fname})")
-```
+strings, URLs, file paths) often lead to important code. Use `get_xrefs_to` \
+with a string's address to find which functions reference it.
 
 ## Phase 3: Deep Analysis
 
@@ -65,17 +45,9 @@ Dive into individual functions.
 
 1. **Decompile** — Use `decompile` with the function name or address. Read the \
 pseudocode to understand the logic.
-2. **Cross-reference tracing** — Follow data and code references via `execute`:
-```python
-# Who calls this function?
-for xref in idautils.XrefsTo(func_ea):
-    print(f"Called from {xref.frm:#x} ({ida_funcs.get_func_name(xref.frm)})")
-
-# What does this function call?
-for xref in idautils.XrefsFrom(func_ea, 0):
-    if xref.type in (ida_xref.fl_CN, ida_xref.fl_CF):
-        print(f"Calls {xref.to:#x} ({ida_name.get_name(xref.to)})")
-```
+2. **Cross-reference tracing** — Use `get_xrefs_to` to find callers of a \
+function ("who calls this?") and `get_xrefs_from` to find callees ("what does \
+this call?"). The xref type field distinguishes calls, jumps, and data references.
 3. **Disassembly** — Use `get_disassembly` for instruction-level detail when the \
 decompiler output is unclear or for analyzing data sections.
 4. **Structure recovery** — When you identify structured data, use \
@@ -85,6 +57,10 @@ decompiler output is unclear or for analyzing data sections.
 
 Document your findings directly in the database.
 
+- **Rename functions** — Use `rename_function` to give meaningful names to \
+auto-named functions (e.g., rename `sub_3f08` to `parse_header`).
+- **Retype functions** — Use `retype_function` to fix function signatures \
+(e.g., `"int __fastcall(struct header *hdr, size_t len)"`).
 - **Rename variables** — Use `set_variable` to give meaningful names to local \
 and global variables (e.g., rename `v12` to `buffer_size`).
 - **Retype variables** — Use `set_variable` with `new_type` to apply correct C \
@@ -108,15 +84,20 @@ the analysis cycle.
 
 ## Best Practices
 
+- **Prefer dedicated tools over `execute`** — Use `get_strings`, `get_imports`, \
+`get_exports`, `get_xrefs_to`, `get_xrefs_from`, `rename_function`, and \
+`retype_function` instead of writing IDAPython boilerplate via `execute`. They \
+return structured data, handle errors, and are faster to use.
+- **Use `execute` for custom analysis** — The `execute` tool gives you full \
+IDAPython access. Write custom scripts for pattern matching, data extraction, \
+or anything the dedicated tools don't cover.
+- **Search docs and examples** — Use `search_docs` to look up unfamiliar IDA \
+APIs. Use `search_examples` to find working IDAPython code patterns — it indexes \
+125 official examples with metadata, API usage, and source code.
 - **Snapshot before bulk changes** — Call `create_snapshot` before renaming or \
 retyping many symbols. Use `restore_snapshot` to roll back if something goes wrong.
 - **Work incrementally** — Rename and retype a few variables, re-decompile, \
 verify, then continue. Small batches are easier to validate.
-- **Use `execute` for custom analysis** — The `execute` tool gives you full \
-IDAPython access. Write custom scripts for pattern matching, data extraction, \
-or anything the dedicated tools don't cover.
-- **Search docs and examples** — Use `search_docs` to look up unfamiliar APIs \
-and `search_examples` to find IDAPython patterns for common tasks.
 - **Namespace persistence** — Variables and functions defined via `execute` \
 persist across calls. Build up helper functions incrementally.
 - **Close when done** — Call `close_database` when analysis is complete to free \
