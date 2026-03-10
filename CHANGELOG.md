@@ -8,6 +8,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Word-boundary matching** — `search_docs` and `search_examples` now use word-boundary-aware matching. Searching for "set" matches `set_name` and `ida_name.set_name` but not "reset", "offset", or "unset". Boundaries are start-of-string, underscore, dot, and whitespace.
+- **Field-weighted scoring in `search_docs`** — Title matches now score 4x higher than body matches, and Python API name matches score 5x higher. Previously all matches scored equally. Includes all-terms-match bonus (1.5x multiplier).
+- **Cross-linking docs → examples** — `search_docs` now includes a `related_examples` key with up to 2 matching example scripts. Controlled via `include_examples` parameter (default `True`).
 - **Server instructions** — Added `instructions` parameter to FastMCP server with workflow guidance (open → list → decompile → annotate → iterate). Visible to LLMs in the MCP `initialize` response.
 - **Literal types for enum parameters** — `comment_type`, `category`, and `level` parameters now use `Literal` types, exposing valid values in the JSON schema `enum` field instead of only in docstrings.
 - **`rename_function` tool** — Rename a function by name or address. Returns old and new names.

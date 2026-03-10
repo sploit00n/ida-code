@@ -15,6 +15,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ida_code._search_utils import term_matches
 from ida_code.config import IDA_EXAMPLES_DIR
 
 log = logging.getLogger(__name__)
@@ -400,47 +401,47 @@ def score_example(entry: ExampleEntry, terms: list[str]) -> float:
 
         # API match: apis_used (curated from index.md)
         for api in entry.apis_used:
-            if t in api.lower():
+            if term_matches(t, api.lower()):
                 term_score = max(term_score, 5.0)
                 break
 
         # API match: api_calls (AST-derived)
         for api in entry.api_calls:
-            if t in api.lower():
+            if term_matches(t, api.lower()):
                 term_score = max(term_score, 4.0)
                 break
 
         # Title match
-        if t in entry.title.lower():
+        if term_matches(t, entry.title.lower()):
             term_score = max(term_score, 4.0)
 
         # Keyword match
         for kw in entry.keywords:
-            if t in kw.lower():
+            if term_matches(t, kw.lower()):
                 term_score = max(term_score, 3.0)
                 break
 
         # Summary match
-        if t in entry.summary.lower():
+        if term_matches(t, entry.summary.lower()):
             term_score = max(term_score, 3.0)
 
         # Import match
         for imp in entry.imports:
-            if t in imp.lower():
+            if term_matches(t, imp.lower()):
                 term_score = max(term_score, 2.0)
                 break
 
         # Description match
-        if t in entry.description.lower():
+        if term_matches(t, entry.description.lower()):
             term_score = max(term_score, 1.5)
 
         # Definition match
         for defn in entry.definitions:
-            if t in defn.lower():
+            if term_matches(t, defn.lower()):
                 term_score = max(term_score, 1.5)
                 break
 
-        # Source fallback
+        # Source fallback (uses plain substring — source is too large for boundary matching)
         if term_score == 0 and t in entry.source.lower():
             term_score = 0.5
 
@@ -482,7 +483,7 @@ def extract_snippet(source: str, terms: list[str], max_lines: int = 15) -> str:
     best_count = 0
     for i, line in enumerate(code_lines):
         lower = line.lower()
-        count = sum(1 for t in terms if t.lower() in lower)
+        count = sum(1 for t in terms if term_matches(t.lower(), lower))
         if count > best_count:
             best_count = count
             best_idx = i

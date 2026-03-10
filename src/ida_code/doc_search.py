@@ -4,6 +4,7 @@ import re
 from html.parser import HTMLParser
 from pathlib import Path
 
+from ida_code._search_utils import term_matches
 from ida_code.config import IDA_DOCS_DIR, IDA_PYTHON_DIR
 
 log = logging.getLogger(__name__)
@@ -111,7 +112,12 @@ def _ensure_indexes():
         log.info("Loaded %d Python API chunks", len(_py_chunks))
 
 
-def search(query: str, max_results: int = 5, max_snippet_length: int = 150) -> dict:
+def search(
+    query: str,
+    max_results: int = 5,
+    max_snippet_length: int = 150,
+    include_examples: bool = True,
+) -> dict:
     """Search IDA docs and Python API sources. Returns structured dict."""
     _ensure_indexes()
 
@@ -120,7 +126,7 @@ def search(query: str, max_results: int = 5, max_snippet_length: int = 150) -> d
         return {"query": query, "results": []}
     log.debug("Searching for terms: %s", terms)
 
-    results: list[tuple[int, str, str, str]] = []  # (score, title, snippet, source)
+    results: list[tuple[float, str, str, str]] = []  # (score, title, snippet, source)
 
     # Search HTML docs.
     for title, text, location in _html_docs:
@@ -129,9 +135,9 @@ def search(query: str, max_results: int = 5, max_snippet_length: int = 150) -> d
             snippet = _excerpt(text, terms, max_len=max_snippet_length)
             results.append((score, title, snippet, f"docs: {location}"))
 
-    # Search Python API chunks.
+    # Search Python API chunks (name field gets higher weight).
     for name, body, source_file in _py_chunks:
-        score = _score(terms, name, body)
+        score = _score_py(terms, name, body)
         if score > 0:
             snippet = _excerpt(body, terms, max_len=max_snippet_length)
             results.append((score, name, snippet, f"python: {source_file}"))
@@ -140,7 +146,7 @@ def search(query: str, max_results: int = 5, max_snippet_length: int = 150) -> d
     results.sort(key=lambda r: r[0], reverse=True)
     results = results[:max_results]
 
-    return {
+    result = {
         "query": query,
         "results": [
             {"source": source, "title": title, "snippet": snippet, "score": score}
@@ -148,11 +154,81 @@ def search(query: str, max_results: int = 5, max_snippet_length: int = 150) -> d
         ],
     }
 
+    # Cross-link: append matching examples if available.
+    if include_examples:
+        from ida_code.example_search import search as _search_examples
 
-def _score(terms: list[str], title: str, text: str) -> int:
-    """Count how many query terms appear in the title or text."""
-    combined = (title + " " + text).lower()
-    return sum(1 for t in terms if t in combined)
+        ex_results = _search_examples(query, max_results=2, max_snippet_lines=5)
+        if ex_results["results"]:
+            result["related_examples"] = ex_results["results"]
+
+    return result
+
+
+def _score(terms: list[str], title: str, text: str) -> float:
+    """Score a document against search terms with field weighting.
+
+    Title matches score 4.0, body matches score 1.0.
+    All-terms-match bonus: 1.5x multiplier.
+    """
+    total = 0.0
+    matched_terms = 0
+
+    title_lower = title.lower()
+    text_lower = text.lower()
+
+    for term in terms:
+        term_score = 0.0
+
+        # Title match (high value)
+        if term_matches(term, title_lower):
+            term_score = max(term_score, 4.0)
+
+        # Body match (lower value)
+        if term_matches(term, text_lower):
+            term_score = max(term_score, 1.0)
+
+        if term_score > 0:
+            matched_terms += 1
+        total += term_score
+
+    # All-terms-match bonus
+    if len(terms) > 1 and matched_terms == len(terms):
+        total *= 1.5
+
+    return total
+
+
+def _score_py(terms: list[str], name: str, body: str) -> float:
+    """Score a Python API chunk with name-weighted scoring.
+
+    Name matches score 5.0, body matches score 1.0.
+    """
+    total = 0.0
+    matched_terms = 0
+
+    name_lower = name.lower()
+    body_lower = body.lower()
+
+    for term in terms:
+        term_score = 0.0
+
+        # Name match (highest value — this IS the API definition)
+        if term_matches(term, name_lower):
+            term_score = max(term_score, 5.0)
+
+        # Body match
+        if term_matches(term, body_lower):
+            term_score = max(term_score, 1.0)
+
+        if term_score > 0:
+            matched_terms += 1
+        total += term_score
+
+    if len(terms) > 1 and matched_terms == len(terms):
+        total *= 1.5
+
+    return total
 
 
 def _excerpt(text: str, terms: list[str], max_len: int = 300) -> str:
@@ -160,6 +236,7 @@ def _excerpt(text: str, terms: list[str], max_len: int = 300) -> str:
     text_lower = text.lower()
     best_pos = len(text)
     for t in terms:
+        # Use simple substring find for excerpt positioning
         pos = text_lower.find(t)
         if pos != -1 and pos < best_pos:
             best_pos = pos

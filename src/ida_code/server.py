@@ -326,7 +326,12 @@ def list_functions(offset: int = 0, limit: int = 50, name_filter: str = "") -> d
 
 
 @mcp.tool
-def search_docs(query: str, max_results: int = 5, max_snippet_length: int = 150) -> dict:
+def search_docs(
+    query: str,
+    max_results: int = 5,
+    max_snippet_length: int = 150,
+    include_examples: bool = True,
+) -> dict:
     """Look up IDA API functions, constants, and usage. No database needs to be open.
 
     Use this to find the right API for a task, check function signatures,
@@ -336,9 +341,14 @@ def search_docs(query: str, max_results: int = 5, max_snippet_length: int = 150)
     - IDA HTML documentation (developer guide, user guide, etc.)
     - IDAPython API source files (ida_*.py function signatures and docstrings)
 
+    Uses word-boundary matching: "set" matches "set_name" but not "reset".
+
+    When *include_examples* is True (default), also returns up to 2 matching
+    example scripts in the ``related_examples`` key.
+
     *max_snippet_length* caps each snippet (default 150 chars).
     """
-    return _search_docs(query, max_results, max_snippet_length)
+    return _search_docs(query, max_results, max_snippet_length, include_examples)
 
 
 @mcp.tool
