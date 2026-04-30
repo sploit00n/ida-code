@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **fastmcp v3** — Bumped dependency from `fastmcp>=2.0,<3` to `fastmcp>=3.0,<4`. No code changes required: the `FastMCP` constructor, `@mcp.tool` / `@mcp.resource` / `@mcp.prompt` decorators, `fastmcp.exceptions.ToolError`, `fastmcp.server.auth.DebugTokenVerifier`, and `mcp.run(transport="streamable-http"|"sse", host=..., port=...)` are all still supported in v3.
+
 ## [0.2.0] - 2026-04-30
 
 ### Added
