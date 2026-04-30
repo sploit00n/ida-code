@@ -1,29 +1,47 @@
 # ida-code
 
-MCP server that lets AI coding agents interact with IDA Pro. Open binaries, run IDAPython scripts, search the API docs — all through tool calls.
+MCP server that lets AI coding agents interact with IDA Pro. Open binaries, decompile, run IDAPython, search the API docs — all through tool calls.
 
 Built on [idalib](https://docs.hex-rays.com/developer-guide/idalib) for headless in-process operation and [fastmcp](https://github.com/jlowin/fastmcp) for the MCP transport.
 
-## Prerequisites
+## You need IDA Pro
 
-- **IDA Pro 9.2+** with idalib support
-- **Python 3.12+**
-- **uv** (recommended) or pip
+`ida-code` does **not** install IDA Pro. You need a licensed **IDA Pro 9.2+** with idalib support. The server imports `idapro` from `$IDA_INSTALL_DIR/idalib/python/` at startup and will exit with an error if it can't find it.
 
-## Installation
+## Install
+
+From PyPI:
 
 ```bash
-cd /path/to/ida-code
+uv add ida-code
+# or
+pip install ida-code
+```
+
+From source:
+
+```bash
+git clone https://github.com/Dil4rd/ida-code
+cd ida-code
 uv sync
 ```
 
-idalib is loaded automatically from `IDA_INSTALL_DIR/idalib/python/` at startup — no manual `pip install` or `py-activate-idalib.py` needed.
+> **Note:** the `fastmcp` dependency is the [community fastmcp](https://github.com/jlowin/fastmcp) package, not the official `mcp` SDK. Don't install `mcp` by mistake.
+
+## Quick start
+
+```bash
+export IDA_INSTALL_DIR=/opt/ida-pro-9.2     # or wherever IDA Pro lives
+uv run ida-code                              # stdio transport (default)
+```
+
+Then point an MCP client at the running command.
 
 ## Configuration
 
 ### Claude Code
 
-Copy the provided `.mcp.json` to your project root, or add to your existing config:
+Copy `.mcp.json.example` to `.mcp.json` in your project and adjust the paths:
 
 ```json
 {
@@ -39,524 +57,75 @@ Copy the provided `.mcp.json` to your project root, or add to your existing conf
 }
 ```
 
+If you installed via `pip install ida-code` you can drop the `--directory` arg and use `"command": "ida-code"` directly (provided `IDA_INSTALL_DIR` is in the environment).
+
 ### Other MCP clients
 
-ida-code uses stdio transport. Run the server directly:
+Run the server with stdio (default) and connect:
 
 ```bash
-IDA_INSTALL_DIR=/opt/ida-pro-9.2 uv run --directory /path/to/ida-code ida-code
+IDA_INSTALL_DIR=/opt/ida-pro-9.2 ida-code
 ```
 
-## Tools
+## Transport modes
 
-### `list_architectures`
-
-Lists architecture slices in a fat (universal) Mach-O binary. Use this to discover available slices before calling `open_database` with the `arch` parameter. No database needs to be open.
-
-**Parameters:**
-- `path` (str) — Path to a Mach-O binary
-
-**Returns:** List of architecture strings (e.g. `["x86_64", "arm64e"]`). Empty list if not a fat Mach-O.
-
-### `open_database`
-
-Opens a binary or existing IDA database. If a database is already open, it's closed first (idalib is single-threaded — one database at a time).
-
-**Parameters:**
-- `path` (str) — Path to binary or `.i64`/`.idb` file
-- `auto_analysis` (bool, default `True`) — Wait for auto-analysis to complete
-- `overwrite` (bool, default `False`) — Delete any existing `.i64`/`.idb` database before opening, forcing a fresh analysis from the original binary
-- `timeout` (int, default `0`) — Maximum seconds to wait for auto-analysis (0 = unlimited). When the timeout expires, the database stays open with partial analysis and a warning is appended to the summary
-
-**Returns:** Summary with processor type, bitness, segment list, entry points, and function count.
-
-**Example output:**
-```
-Database opened: /tmp/hello
-Processor: ARM (64-bit)
-Functions: 142
-Segments (4):
-  HEADER: 0x0-0x100
-  __TEXT: 0x100-0x8000
-  __DATA: 0x8000-0xc000
-  __LINKEDIT: 0xc000-0x10000
-Entry points (1):
-  _main: 0x3f08
+```bash
+ida-code                          # stdio (default)
+ida-code --http                   # streamable-http on 127.0.0.1:8080
+ida-code --http 0.0.0.0:9090      # custom host:port
+ida-code --sse                    # SSE on 127.0.0.1:8080
+ida-code --sse :9090              # SSE on 127.0.0.1:9090
 ```
 
-### `get_database_info`
-
-Returns summary info about the current database (processor type, bitness, segments, entry points, function count) without opening or closing anything. If no database is open, says so.
-
-**Parameters:** None.
-
-### `close_database`
-
-Closes the current database and frees resources. The executor namespace is cleared. Safe to call when no database is open (returns a no-op message).
-
-**Parameters:** None.
-
-### `execute`
-
-Runs arbitrary IDAPython code and returns captured stdout + stderr. This is the core feedback loop — the agent writes analysis code, sees the output, and iterates.
-
-**Parameters:**
-- `code` (str) — IDAPython code to execute
-- `timeout` (int, default `30`) — Maximum wall-clock seconds (0 = unlimited)
-
-**Key behaviors:**
-- **Persistent namespace** — Variables and functions defined in one call carry over to the next. Build up helper functions incrementally.
-- **Pre-imported modules** — `ida_funcs`, `ida_bytes`, `ida_name`, `ida_segment`, `idautils`, `idc`, `ida_hexrays`, and more. No boilerplate needed.
-- **REPL-like output** — If the last statement is a bare expression, its `repr()` is returned automatically (like the Python interactive prompt). No need to wrap everything in `print()`.
-- **Tracebacks as output** — Errors are returned as text, not MCP errors. They're useful feedback for the agent to self-correct.
-- **Output truncation** — Capped at 50K characters with a note when truncated.
-- **Timeout protection** — Code that runs longer than the timeout is interrupted and an error message is returned instead of hanging the server.
-
-**Example calls:**
-
-List all functions:
-```python
-for ea in idautils.Functions():
-    print(f"{ea:#x} {ida_funcs.get_func_name(ea)}")
-```
-
-Decompile a function (requires Hex-Rays):
-```python
-import ida_hexrays
-cfunc = ida_hexrays.decompile(0x3f08)
-print(cfunc)
-```
-
-Build up state across calls:
-```python
-# Call 1: define a helper
-def xrefs_to(name):
-    ea = ida_name.get_name_ea(0, name)
-    return [ref.frm for ref in idautils.XrefsTo(ea)]
-
-# Call 2: use it
-for caller in xrefs_to("_objc_msgSend"):
-    print(f"{caller:#x} {ida_funcs.get_func_name(caller)}")
-```
-
-### `execute_file`
-
-Runs an IDAPython script file by path. Useful for executing existing analysis scripts without pasting their contents.
-
-**Parameters:**
-- `path` (str) — Path to the `.py` script file
-- `args` (str, optional) — Inline code to run after the file, in the same namespace
-- `timeout` (int, default `30`) — Maximum wall-clock seconds (0 = unlimited)
-
-**Key behaviors:**
-- Same persistent namespace and pre-imported modules as `execute`
-- File is read with lenient encoding (undecodable bytes replaced)
-- When `args` is provided, it runs after the file — useful for calling functions the script defines
-
-**Example calls:**
-
-Run a script:
-```python
-# Executes /path/to/enumerate_strings.py
-```
-
-Run a script then call a function it defines:
-```python
-# path: /path/to/helpers.py
-# args: print(analyze_function(0x3f08))
-```
-
-### `decompile`
-
-Decompiles a function by name or address and returns pseudocode. This is the most common single operation in reverse engineering — having it as a dedicated tool saves round-trips compared to writing Hex-Rays boilerplate via `execute`.
-
-**Parameters:**
-- `function` (str) — Function name (e.g. `"main"`, `"_objc_msgSend"`) or hex address (e.g. `"0x3f08"`, `"3f08"`)
-
-**Returns:** Pseudocode prefixed with a comment showing the resolved function name and address range.
-
-**Example output:**
-```c
-// _main @ 0x3f08 (size: 0x120)
-
-int __fastcall main(int argc, const char **argv, const char **envp)
-{
-  puts("Hello, world!");
-  return 0;
-}
-```
-
-**Error cases:**
-- Name/address not found
-- Address not within a recognized function
-- Hex-Rays decompiler not available or decompilation failure
-
-### `get_disassembly`
-
-Gets disassembly for an address range.
-
-**Parameters:**
-- `start` (str) — Name (e.g. `"main"`) or address (hex `"0x3f08"` / `"3f08"`, decimal `"16136"`)
-- `length` (int, default `256`) — Number of bytes from start to disassemble (capped at 64 KB)
-
-**Returns:** `{"start", "end", "count", "instructions": [{"address", "disasm"}]}`
-
-### `list_functions`
-
-Lists functions in the database with pagination. Returns one line per function with address, size, and name.
-
-**Parameters:**
-- `offset` (int, default `0`) — Skip the first N functions (for pagination)
-- `limit` (int, default `50`, max `1000`) — Maximum functions to return
-- `name_filter` (str, default `""`) — Only include functions whose name contains this substring (case-insensitive)
-
-**Example output:**
-```
-Functions (showing 5, total 142, offset=0):
-0x3e00   0x20  _start
-0x3e20   0x48  __libc_csu_init
-0x3e68   0x02  __libc_csu_fini
-0x3f08  0x120  _main
-0x4028   0x64  _helper
-```
-
-### `search_docs`
-
-Searches IDA's bundled documentation and Python API source files. Useful for looking up API signatures, finding the right function for a task, or reading usage examples.
-
-**Parameters:**
-- `query` (str) — Search terms (space-separated, case-insensitive)
-- `max_results` (int, default `10`) — Maximum results to return
-
-**Searches two corpora:**
-- **IDA HTML docs** — Developer guide, user guide, SDK examples (2628 indexed pages)
-- **IDAPython sources** — All `ida_*.py`, `idautils.py`, `idc.py` function signatures and docstrings
-
-**Example output** for query `"get_func_name"`:
-```
-[docs: developer-guide/idapython/idapython-getting-started.html] Get the name of a function
-ida_funcs.get_func_name(ea)
-
-[python: ida_funcs.py] get_func_name
-def get_func_name(ea: ida_idaapi.ea_t) ->str:
-    """Get function name.
-    :param ea: any address in the function
-    :returns: length of the function name"""
-```
-
-### `list_snapshots`
-
-Lists all database snapshots. Returns snapshot IDs, descriptions, and filenames.
-
-**Parameters:** None.
-
-### `create_snapshot`
-
-Creates a database snapshot to checkpoint the current state. Use this before making destructive changes (renaming, patching, type changes) so you can roll back if needed.
-
-**Parameters:**
-- `desc` (str, default `""`) — Short description (max 128 chars)
-
-**Returns:** The new snapshot as `{"id", "desc", "filename"}`.
-
-### `restore_snapshot`
-
-Restores the database to a previous snapshot. The executor namespace is reset since the database state changed.
-
-**Parameters:**
-- `snapshot_id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
-
-### `delete_snapshot`
-
-Deletes a database snapshot by removing its file from disk.
-
-**Parameters:**
-- `snapshot_id` (str) — Snapshot ID from `list_snapshots` or `create_snapshot`
-
-### `get_undo_status`
-
-Checks what undo/redo actions are available. IDA only exposes the *next* action in each direction, not the full history stack.
-
-**Parameters:** None.
-
-**Returns:** `{"can_undo", "undo_action", "can_redo", "redo_action"}` where `undo_action` and `redo_action` are labels describing the next available action (empty string if none).
-
-### `perform_undo`
-
-Undoes the last database action(s). The executor namespace is reset after undo since the database state changed.
-
-**Parameters:**
-- `steps` (int, default `1`) — Number of undo steps to perform. If fewer steps are available than requested, performs as many as possible (partial success, not an error).
-
-**Returns:** `{"status": "undone", "steps_requested", "steps_performed", "actions", "next_undo", "next_redo"}` where `actions` is the list of action labels that were undone.
-
-### `perform_redo`
-
-Redoes the last undone database action(s). The executor namespace is reset after redo since the database state changed.
-
-**Parameters:**
-- `steps` (int, default `1`) — Number of redo steps to perform. If fewer steps are available than requested, performs as many as possible (partial success, not an error).
-
-**Returns:** `{"status": "redone", "steps_requested", "steps_performed", "actions", "next_undo", "next_redo"}` where `actions` is the list of action labels that were redone.
-
-### `search_examples`
-
-Searches the 125 official IDAPython example scripts bundled with IDA. Uses AST parsing to index imports, function definitions, and API call patterns alongside curated metadata (title, description, keywords, APIs used) from IDA's `index.md`.
-
-**Parameters:**
-- `query` (str) — Search terms (space-separated, case-insensitive)
-- `max_results` (int, default `10`) — Maximum results to return
-- `category` (str, default `""`) — Filter by category: `ui`, `disassembler`, `decompiler`, `debugger`, `types`, `misc`
-- `level` (str, default `""`) — Filter by difficulty: `beginner`, `intermediate`, `advanced`
-
-**Scoring** ranks results by field relevance: API matches score highest (5pts), followed by title/keyword matches (3-4pts), imports/descriptions (1.5-2pts), and source text fallback (0.5pts). Queries matching all terms get a 1.5x bonus.
-
-**Example output** for query `"decompile"`:
-```
-### Decompile entrypoint automatically  [intermediate, decompiler]
-File: decompiler/decompile_entry_points.py
-decompile entrypoint automatically
-APIs: ida_hexrays.decompile, ida_hexrays.init_hexrays_plugin
-```python
-import ida_hexrays
-def init_hexrays():
-    ...
-```
-```
-
-### `list_structures`
-
-Lists structures (structs/unions) in the database with pagination. Returns name, size, alignment, and member count for each.
-
-**Parameters:**
-- `offset` (int, default `0`) — Skip the first N matching structures
-- `limit` (int, default `50`, max `1000`) — Maximum structures to return
-- `name_filter` (str, default `""`) — Only include structures whose name contains this substring (case-insensitive)
-
-### `get_structure`
-
-Gets detailed info about a structure by name, including its full C definition with field offset annotations.
-
-**Parameters:**
-- `name` (str) — Structure name
-
-**Returns:** `{"name", "size", "alignment", "is_union", "member_count", "definition"}` where `definition` is the C representation with `/* offset */` comments on each field.
-
-### `create_structure`
-
-Creates a new structure from a C definition string. Fails if a structure with the same name already exists.
-
-**Parameters:**
-- `definition` (str) — Valid C struct or union definition (e.g. `"struct foo { int x; char *y; };"`)
-
-**Returns:** The newly created structure details (same format as `get_structure`).
-
-### `edit_structure`
-
-Edits an existing structure by fully replacing its C definition. Fails if the structure does not exist.
-
-**Parameters:**
-- `definition` (str) — Valid C struct or union definition with the same name as an existing structure
-
-**Returns:** The updated structure details.
-
-### `delete_structure`
-
-Deletes a structure by name. Removes it from the database type library. Fails if the structure does not exist.
-
-**Parameters:**
-- `name` (str) — Structure name
-
-### `get_comment`
-
-Gets comment(s) at an address. Can return a single comment type or all non-empty comment types at once.
-
-**Parameters:**
-- `address` (str) — Name (e.g. `"main"`) or hex address (e.g. `"0x3f08"`)
-- `comment_type` (str, default `""`) — One of: `regular`, `repeatable`, `function`, `anterior`, `posterior`, or empty string to return all non-empty types
-
-**Comment types:**
-- **regular** — inline comment on a disassembly line
-- **repeatable** — inline comment that propagates to cross-references
-- **function** — comment on the function header (address must be in a function)
-- **anterior** — multi-line block before the address
-- **posterior** — multi-line block after the address
-
-**Returns:**
-- Specific type: `{"address", "comment_type", "comment"}`
-- All types (empty string): `{"address", "regular"?, "repeatable"?, "function"?, "anterior"?, "posterior"?}` (only non-empty keys included)
-
-### `set_comment`
-
-Sets a comment at an address.
-
-**Parameters:**
-- `address` (str) — Name or hex address
-- `comment` (str) — Comment text (use `\n` for multi-line anterior/posterior)
-- `comment_type` (str, default `"regular"`) — One of: `regular`, `repeatable`, `function`, `anterior`, `posterior`
-
-**Returns:** `{"address", "comment_type", "comment", "status": "updated"}`
-
-### `delete_comment`
-
-Deletes a comment at an address.
-
-**Parameters:**
-- `address` (str) — Name or hex address
-- `comment_type` (str, default `"regular"`) — One of: `regular`, `repeatable`, `function`, `anterior`, `posterior`
-
-**Returns:** `{"address", "comment_type", "status": "deleted"}`
-
-### `rename_function`
-
-Renames a function.
-
-**Parameters:**
-- `function` (str) — Function name (e.g. `"sub_3f08"`) or hex address (e.g. `"0x3f08"`)
-- `new_name` (str) — New function name
-
-**Returns:** `{"address", "old_name", "new_name", "status": "renamed"}`
-
-### `retype_function`
-
-Changes a function's type signature.
-
-**Parameters:**
-- `function` (str) — Function name or hex address
-- `new_type` (str) — C function type string (e.g. `"int __fastcall(int argc, char **argv)"`)
-
-**Returns:** `{"address", "name", "old_type", "new_type", "status": "retyped"}`
-
-### `get_xrefs_to`
-
-Gets cross-references to an address (who references this?).
-
-**Parameters:**
-- `address` (str) — Name (e.g. `"main"`) or hex address (e.g. `"0x3f08"`)
-- `max_results` (int, default `100`) — Maximum xrefs to return
-
-**Returns:** `{"address", "xrefs": [{"from", "type"}], "count", "truncated"}`
-
-### `get_xrefs_from`
-
-Gets cross-references from an address (what does this reference?).
-
-**Parameters:**
-- `address` (str) — Name (e.g. `"main"`) or hex address (e.g. `"0x3f08"`)
-- `max_results` (int, default `100`) — Maximum xrefs to return
-
-**Returns:** `{"address", "xrefs": [{"to", "type"}], "count", "truncated"}`
-
-### `get_strings`
-
-Lists strings found in the database.
-
-**Parameters:**
-- `min_length` (int, default `5`) — Minimum string length to include
-- `max_results` (int, default `200`) — Maximum strings to return
-- `name_filter` (str, default `""`) — Only include strings containing this substring (case-insensitive)
-
-**Returns:** `{"strings": [{"address", "value", "length", "type"}], "count", "truncated"}`
-
-### `get_imports`
-
-Lists all imported functions grouped by module.
-
-**Parameters:** None.
-
-**Returns:** `{"modules": [{"name", "imports": [{"address", "name", "ordinal"}]}], "total_imports"}`
-
-### `get_exports`
-
-Lists all exported functions/symbols.
-
-**Parameters:** None.
-
-**Returns:** `{"exports": [{"address", "name", "ordinal"}], "count"}`
-
-### `get_variable`
-
-Gets info about a local (decompiler) or global variable.
-
-**Parameters:**
-- `name` (str) — Variable name (for locals) or symbol name/address (for globals)
-- `scope` (str, optional) — Function name or hex address. If provided, looks up a local variable within that function. If omitted, resolves `name` as a global.
-
-**Returns:**
-- Local: `{"name", "type", "width", "is_arg", "function", "scope": "local"}`
-- Global: `{"name", "type", "address", "scope": "global"}`
-
-Local variables require the Hex-Rays decompiler.
-
-### `set_variable`
-
-Renames and/or retypes a local (decompiler) or global variable.
-
-**Parameters:**
-- `name` (str) — Current variable name (for locals) or symbol name/address (for globals)
-- `scope` (str, optional) — Function name or hex address. If provided, modifies a local variable. If omitted, modifies a global.
-- `new_name` (str, optional) — New name for the variable
-- `new_type` (str, optional) — New C type string (e.g. `"int"`, `"char *"`, `"struct foo *"`)
-
-At least one of `new_name` or `new_type` must be provided. Returns the updated variable info with `status: "modified"`.
-
-## Resources
-
-MCP Resources provide coding guidelines and templates for writing IDAPython code. Read them via your MCP client's resource browsing capability.
-
-| URI | Description |
-|-----|-------------|
-| `guidelines://standalone_script` | Standalone idalib scripts — bootstrap, lifecycle, patterns |
-| `guidelines://plugin` | IDA plugins — `plugin_t` subclass, actions, hooks |
-| `guidelines://idapython_script` | Classic IDAPython scripts — in-GUI scripts via File > Script File |
-
-## Prompts
-
-MCP Prompts are reusable instruction templates that AI agents can request to guide their behavior. List them via your MCP client's prompt listing capability.
-
-### `reverse_engineer`
-
-A comprehensive workflow guide for analyzing an unknown binary. Covers five phases: reconnaissance (opening, surveying, enumerating strings/imports), triage (filtering by name patterns, size, string xrefs), deep analysis (decompilation, cross-references, disassembly, structure recovery), annotation (renaming, retyping, commenting, defining structures), and iteration (re-decompile, verify, expand scope). Includes best practices for snapshots, incremental work, and namespace persistence.
-
-**Parameters:** None.
-
-### `create_script`
-
-Returns coding guidelines for the specified script type plus IDAPython best practices (error handling, performance, naming conventions, common pitfalls, MCP tool usage for testing).
-
-**Parameters:**
-- `target` (str, required) — One of: `standalone_script`, `plugin`, `idapython_script`
-- `description` (str, optional) — What the script should do (appended as a task description)
-
-## Environment Variables
+HTTP/SSE require bearer token auth. Set `MCP_AUTH_TOKEN` or let the server generate one (printed to stderr on startup).
+
+## Tools (35)
+
+Full parameter docs live in each tool's docstring — surfaced automatically to MCP clients via `tools/list`.
+
+| Domain | Tools |
+|---|---|
+| Database | `open_database`, `close_database`, `get_database_info`, `list_architectures` |
+| Code execution | `execute`, `execute_file` |
+| Navigation | `list_functions`, `decompile`, `get_disassembly`, `get_xrefs_to`, `get_xrefs_from` |
+| Annotation | `rename_function`, `retype_function`, `get_comment`, `set_comment`, `delete_comment`, `get_variable`, `set_variable` |
+| Structures | `list_structures`, `get_structure`, `create_structure`, `edit_structure`, `delete_structure` |
+| Snapshots | `list_snapshots`, `create_snapshot`, `restore_snapshot`, `delete_snapshot` |
+| Undo/redo | `get_undo_status`, `perform_undo`, `perform_redo` |
+| Inventory | `get_strings`, `get_imports`, `get_exports` |
+| Search | `search_docs`, `search_examples` |
+
+## Resources & prompts
+
+| Type | URI / name | Purpose |
+|---|---|---|
+| Resource | `guidelines://standalone_script` | Boilerplate for standalone idalib scripts |
+| Resource | `guidelines://plugin` | Boilerplate for IDA plugins (`plugin_t`) |
+| Resource | `guidelines://idapython_script` | Boilerplate for IDAPython scripts run inside IDA GUI |
+| Prompt | `reverse_engineer` | Five-phase RE workflow (recon, triage, analysis, annotation, iteration) |
+| Prompt | `create_script` | Coding guidelines for a chosen target script type |
+
+## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `IDA_INSTALL_DIR` | `/opt/ida-pro-9.2` | IDA Pro installation directory |
+| `IDA_INSTALL_DIR` | `/opt/ida-pro-9.2` | IDA Pro installation directory (must contain `idalib/python/`) |
 | `LOG_LEVEL` | `WARNING` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `MCP_AUTH_TOKEN` | (auto-generated) | Bearer token for HTTP/SSE transports |
 
-Documentation and Python API paths are derived automatically (`$IDA_INSTALL_DIR/docs`, `$IDA_INSTALL_DIR/python`).
+Doc and example paths are derived from `IDA_INSTALL_DIR` (`docs/`, `python/`, `python/examples/`).
 
-## Architecture
+## Development
 
-```
-server.py              FastMCP server — 35 tools + 3 resources + 2 prompts, stdio transport
-    ├── session.py         idalib lifecycle — open/close database, state machine
-    ├── executor.py        exec() engine — persistent namespace, output capture
-    ├── snapshots.py       database snapshot create/restore/delete
-    ├── undo.py            undo/redo status + perform via ida_undo
-    ├── structures.py      struct/union list/get/create/edit/delete
-    ├── variables.py       variable get/set — local (Hex-Rays) + global
-    ├── comments.py        comment get/set/delete — regular, repeatable, function, anterior, posterior
-    ├── doc_search.py      keyword search — HTML docs + Python API sources
-    ├── example_search.py  AST-based search — 125 official IDAPython examples
-    ├── guidelines.py      coding templates — standalone scripts, plugins, IDAPython scripts
-    ├── prompts.py         MCP prompt templates — RE workflow, script creation guide
-    └── config.py          environment-based configuration
+```bash
+git clone https://github.com/Dil4rd/ida-code
+cd ida-code
+uv sync --extra dev
+uv run pytest
 ```
 
-The server runs idalib in-process (no IPC, no batch mode). This gives persistent state and fast iteration — the agent can open a binary once and run hundreds of analysis commands against it.
+The test suite covers the executor, doc/example search, comments, snapshots, structures, undo, variables, and Mach-O parsing. Tests that need idalib are skipped if it's not available.
 
 ## License
 
-MIT
+MIT — see `LICENSE`.

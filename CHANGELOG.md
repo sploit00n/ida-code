@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.2.0] - Unreleased
+## [0.2.0] - 2026-04-30
 
 ### Added
 
+- **PyPI release prep** — Full PEP 639 metadata in `pyproject.toml` (license expression, classifiers, urls, authors, keywords, readme). Hatchling sdist allowlist excludes dev-only files (`.claude/`, `.mcp.json`, `CLAUDE.md`, `TODO.md`, `uv.lock`). README rewritten as a slim user-facing reference (~130 lines, table-of-tools instead of 30 per-tool sections).
+- **Friendlier `idapro` import error** — When `IDA_INSTALL_DIR` doesn't point at a valid IDA Pro install, the server now exits with a clear message naming the directory it tried instead of an opaque `ModuleNotFoundError`.
+- **`.mcp.json.example`** — Committed configuration template with placeholder paths. The real `.mcp.json` is now gitignored to avoid leaking local paths.
 - **Word-boundary matching** — `search_docs` and `search_examples` now use word-boundary-aware matching. Searching for "set" matches `set_name` and `ida_name.set_name` but not "reset", "offset", or "unset". Boundaries are start-of-string, underscore, dot, and whitespace.
 - **Field-weighted scoring in `search_docs`** — Title matches now score 4x higher than body matches, and Python API name matches score 5x higher. Previously all matches scored equally. Includes all-terms-match bonus (1.5x multiplier).
 - **Cross-linking docs → examples** — `search_docs` now includes a `related_examples` key with up to 2 matching example scripts. Controlled via `include_examples` parameter (default `True`).
@@ -21,7 +24,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`get_imports` tool** — List all imported functions grouped by module.
 - **`get_exports` tool** — List all exported functions/symbols with ordinals.
 - **Database file guard** — Before every IDA API call, `session.require_open()` now checks that the `.i64`/`.idb` database file still exists on disk. If the file has been moved or deleted, the server resets internal state and returns a clean `ToolError` instead of letting idalib segfault and crash the process. All tools that require an open database use this centralized check.
-
 - **`open_database` `overwrite` flag** — Delete existing `.i64`/`.idb` database files before opening, forcing a fresh analysis from the original binary.
 - **`close_database` tool** — Explicitly close the current database and free resources. Clears the executor namespace.
 - **`execute_file` tool** — Run IDAPython script files directly by path. Optional `args` parameter for inline follow-up code in the same namespace.

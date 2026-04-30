@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ida-code": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/ida-code", "ida-code"],
+      "env": {
+        "IDA_INSTALL_DIR": "/opt/ida-pro-9.2"
+      }
+    }
+  }
+}

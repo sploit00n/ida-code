@@ -18,7 +18,15 @@ if _idalib_python.is_dir() and str(_idalib_python) not in sys.path:
 # without requiring `py-activate-idalib.py`.
 os.environ.setdefault("IDADIR", str(IDA_INSTALL_DIR))
 
-import idapro
+try:
+    import idapro
+except ImportError as e:
+    raise ImportError(
+        f"Could not import idapro from {_idalib_python}. "
+        f"Set IDA_INSTALL_DIR to your IDA Pro 9.2+ installation directory "
+        f"(currently {IDA_INSTALL_DIR}). "
+        f"Original error: {e}"
+    ) from e
 
 
 class State(enum.Enum):
