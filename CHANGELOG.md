@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **PyPI publish workflow** — `.github/workflows/publish-pypi.yml` builds with `uv build` and publishes to PyPI via Trusted Publishing on every push to `main` whose `pyproject.toml` version differs from the latest released version. No-op when versions match.
+
 ### Changed
 
 - **fastmcp v3** — Bumped dependency from `fastmcp>=2.0,<3` to `fastmcp>=3.0,<4`. No code changes required: the `FastMCP` constructor, `@mcp.tool` / `@mcp.resource` / `@mcp.prompt` decorators, `fastmcp.exceptions.ToolError`, `fastmcp.server.auth.DebugTokenVerifier`, and `mcp.run(transport="streamable-http"|"sse", host=..., port=...)` are all still supported in v3.
