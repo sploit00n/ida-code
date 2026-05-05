@@ -126,6 +126,10 @@ uv run pytest
 
 The test suite covers the executor, doc/example search, comments, snapshots, structures, undo, variables, and Mach-O parsing. Tests that need idalib are skipped if it's not available.
 
+## Credits
+
+Thanks to [@p41l](https://github.com/p41l) for ideas and for testing the tool across different LLMs.
+
 ## License
 
 MIT — see `LICENSE`.
