@@ -66,8 +66,9 @@ def open_database(
     Returns summary info (architecture, segments, entry points, function count).
     If a database is already open, it is closed first.
 
-    Set overwrite=True to delete any existing .i64/.idb database and force
-    a fresh analysis from the original binary.
+    Set overwrite=True to delete any existing .i64/.idb database (and any
+    unpacked .id0/.id1/.id2/.nam/.til fragments left by a failed open)
+    and force a fresh analysis from the original binary.
 
     *timeout* limits auto-analysis wait time in seconds (default 0 = unlimited).
     When the timeout expires the database stays open with partial analysis

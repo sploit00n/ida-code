@@ -263,11 +263,19 @@ def _collect_summary(path: str) -> dict:
     }
 
 
+_DB_EXTENSIONS = (".i64", ".idb", ".id0", ".id1", ".id2", ".nam", ".til")
+
+
 def _remove_existing_databases(path: str) -> None:
-    """Remove existing IDA database files so a fresh analysis starts."""
+    """Remove existing IDA database files and unpacked fragments.
+
+    Includes the unpacked fragment extensions (.id0/.id1/.id2/.nam/.til) so
+    that a half-written database from a previously failed open does not
+    block the next attempt.
+    """
     from pathlib import Path
     p = Path(path)
-    for ext in (".i64", ".idb"):
+    for ext in _DB_EXTENSIONS:
         for candidate in {p.with_suffix(ext), Path(str(p) + ext)}:
             if candidate.is_file():
                 candidate.unlink()

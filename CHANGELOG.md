@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`open_database` overwrite cleans up unpacked fragments** — `overwrite=True` now also deletes `.id0`, `.id1`, `.id2`, `.nam`, and `.til` files, not just `.i64`/`.idb`. A failed open could leave these partial fragments behind, after which every subsequent attempt would fail immediately with a generic `-1` because IDA refused to overwrite the half-written unpacked database.
+
 ## [0.2.1] - 2026-05-05
 
 ### Added
