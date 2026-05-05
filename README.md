@@ -4,80 +4,48 @@ MCP server that lets AI coding agents interact with IDA Pro. Open binaries, deco
 
 Built on [idalib](https://docs.hex-rays.com/developer-guide/idalib) for headless in-process operation and [fastmcp](https://github.com/jlowin/fastmcp) for the MCP transport.
 
-## You need IDA Pro
-
-`ida-code` does **not** install IDA Pro. You need a licensed **IDA Pro 9.2+** with idalib support. The server imports `idapro` from `$IDA_INSTALL_DIR/idalib/python/` at startup and will exit with an error if it can't find it.
+> **Requires** a licensed IDA Pro 9.2+ with idalib support. `ida-code` does not install or replace IDA Pro — it loads `idapro` from your existing install at startup.
 
 ## Install
 
-From PyPI:
-
 ```bash
-uv add ida-code
-# or
-pip install ida-code
+uv tool install ida-code
 ```
 
-From source:
+This puts the `ida-code` CLI on your `PATH` (via `uv`'s tool dir) so MCP clients can launch it directly. Don't have uv? `pip install ida-code` works too.
 
-```bash
-git clone https://github.com/Dil4rd/ida-code
-cd ida-code
-uv sync
-```
+Then point `IDA_INSTALL_DIR` at your IDA Pro install (the directory that contains `idalib/python/`):
 
-> **Note:** the `fastmcp` dependency is the [community fastmcp](https://github.com/jlowin/fastmcp) package, not the official `mcp` SDK. Don't install `mcp` by mistake.
+| OS | Typical path |
+|---|---|
+| Linux | `/opt/ida-pro-9.3` |
+| macOS | `/Applications/IDA Professional 9.3.app/Contents/MacOS` |
+| Windows | `C:\Program Files\IDA Professional 9.3` |
 
-## Quick start
+## Use with Claude Code
 
-```bash
-export IDA_INSTALL_DIR=/opt/ida-pro-9.2     # or wherever IDA Pro lives
-uv run ida-code                              # stdio transport (default)
-```
-
-Then point an MCP client at the running command.
-
-## Configuration
-
-### Claude Code
-
-Copy `.mcp.json.example` to `.mcp.json` in your project and adjust the paths:
+Add `ida-code` to your project's `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "ida-code": {
-      "command": "uv",
-      "args": ["run", "--directory", "/path/to/ida-code", "ida-code"],
+      "command": "ida-code",
       "env": {
-        "IDA_INSTALL_DIR": "/opt/ida-pro-9.2"
+        "IDA_INSTALL_DIR": "/opt/ida-pro-9.3"
       }
     }
   }
 }
 ```
 
-If you installed via `pip install ida-code` you can drop the `--directory` arg and use `"command": "ida-code"` directly (provided `IDA_INSTALL_DIR` is in the environment).
+Restart Claude Code; the server is picked up automatically. You can confirm it's wired up by asking Claude to open a binary — it should call `open_database` and report architecture, entry point, and load address.
 
-### Other MCP clients
-
-Run the server with stdio (default) and connect:
+For other MCP clients, run the server directly:
 
 ```bash
-IDA_INSTALL_DIR=/opt/ida-pro-9.2 ida-code
+IDA_INSTALL_DIR=/opt/ida-pro-9.3 ida-code   # stdio transport
 ```
-
-## Transport modes
-
-```bash
-ida-code                          # stdio (default)
-ida-code --http                   # streamable-http on 127.0.0.1:8080
-ida-code --http 0.0.0.0:9090      # custom host:port
-ida-code --sse                    # SSE on 127.0.0.1:8080
-ida-code --sse :9090              # SSE on 127.0.0.1:9090
-```
-
-HTTP/SSE require bearer token auth. Set `MCP_AUTH_TOKEN` or let the server generate one (printed to stderr on startup).
 
 ## Tools (35)
 
@@ -105,21 +73,56 @@ Full parameter docs live in each tool's docstring — surfaced automatically to 
 | Prompt | `reverse_engineer` | Five-phase RE workflow (recon, triage, analysis, annotation, iteration) |
 | Prompt | `create_script` | Coding guidelines for a chosen target script type |
 
+## Transport modes
+
+```bash
+ida-code                          # stdio (default)
+ida-code --http                   # streamable-http on 127.0.0.1:8080
+ida-code --http 0.0.0.0:9090      # custom host:port
+ida-code --sse                    # SSE on 127.0.0.1:8080
+ida-code --sse :9090              # SSE on 127.0.0.1:9090
+```
+
+HTTP/SSE require bearer token auth. Set `MCP_AUTH_TOKEN` or let the server generate one (printed to stderr on startup).
+
 ## Environment variables
 
 | Variable | Default | Description |
 |---|---|---|
-| `IDA_INSTALL_DIR` | `/opt/ida-pro-9.2` | IDA Pro installation directory (must contain `idalib/python/`) |
+| `IDA_INSTALL_DIR` | `/opt/ida-pro-9.3` | IDA Pro installation directory (must contain `idalib/python/`) |
 | `LOG_LEVEL` | `WARNING` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
 | `MCP_AUTH_TOKEN` | (auto-generated) | Bearer token for HTTP/SSE transports |
 
 Doc and example paths are derived from `IDA_INSTALL_DIR` (`docs/`, `python/`, `python/examples/`).
 
-## Development
+## Install from source
 
 ```bash
 git clone https://github.com/Dil4rd/ida-code
 cd ida-code
+uv sync
+uv run ida-code
+```
+
+When wiring a source checkout into `.mcp.json`, use `uv` as the command:
+
+```json
+{
+  "mcpServers": {
+    "ida-code": {
+      "command": "uv",
+      "args": ["run", "--directory", "/path/to/ida-code", "ida-code"],
+      "env": { "IDA_INSTALL_DIR": "/opt/ida-pro-9.3" }
+    }
+  }
+}
+```
+
+> **Note:** the `fastmcp` dependency is the [community fastmcp](https://github.com/jlowin/fastmcp) package, not the official `mcp` SDK. Don't install `mcp` by mistake.
+
+## Development
+
+```bash
 uv sync --extra dev
 uv run pytest
 ```

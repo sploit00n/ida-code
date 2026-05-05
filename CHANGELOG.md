@@ -6,13 +6,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-05-05
+
 ### Added
 
 - **PyPI publish workflow** — `.github/workflows/publish-pypi.yml` builds with `uv build` and publishes to PyPI via Trusted Publishing on every push to `main` whose `pyproject.toml` version differs from the latest released version. No-op when versions match.
+- **Credits section** in README thanking [@p41l](https://github.com/p41l) for ideas and cross-LLM testing.
 
 ### Changed
 
 - **fastmcp v3** — Bumped dependency from `fastmcp>=2.0,<3` to `fastmcp>=3.0,<4`. No code changes required: the `FastMCP` constructor, `@mcp.tool` / `@mcp.resource` / `@mcp.prompt` decorators, `fastmcp.exceptions.ToolError`, `fastmcp.server.auth.DebugTokenVerifier`, and `mcp.run(transport="streamable-http"|"sse", host=..., port=...)` are all still supported in v3.
+- **README polish** — Compressed install to a single primary path (`uv tool install ida-code`, with `pip` fallback), added a per-OS `IDA_INSTALL_DIR` table, moved the tool inventory above transport/env sections, and pushed source-install + fastmcp note to the bottom.
 
 ## [0.2.0] - 2026-04-30
 
