@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **End-to-end regression test** — `tests/test_e2e.py` opens a real binary through fastmcp's in-process `Client` + `FastMCPTransport`, asserting the call returns within 15s. Catches future regressions that route idalib off the main thread (which would hang). Auto-skips when idalib isn't available.
+
 ### Changed
 
 - **Pin fastmcp back to `>=2.0,<3`** — v3 dispatches sync tool functions to `anyio.to_thread.run_sync`, but idalib hangs indefinitely when called from a non-main thread, so every idalib-touching tool wedged. v2 runs sync tools on the main thread and works in 0.7s on the same call. Reverts the v2→v3 bump from 0.2.1.
