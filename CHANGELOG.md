@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - **Pin fastmcp back to `>=2.0,<3`** — v3 dispatches sync tool functions to `anyio.to_thread.run_sync`, but idalib hangs indefinitely when called from a non-main thread, so every idalib-touching tool wedged. v2 runs sync tools on the main thread and works in 0.7s on the same call. Reverts the v2→v3 bump from 0.2.1.
+- **`open_database` refuses paths with unpacked fragments present** — if `.id0`/`.id1`/`.id2`/`.nam`/`.til` files exist for the target and `overwrite=False`, raise a clear `ToolError` listing them instead of letting idalib return an opaque `-1`. The message warns that the fragments may belong to another active IDA instance and only suggests `overwrite=True` if nothing else owns them.
 
 ### Fixed
 

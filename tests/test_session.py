@@ -1,9 +1,11 @@
-"""Unit tests for ida_code.session.require_open().
+"""Unit tests for ida_code.session.
 
 These tests work without idalib — they mock the session module globals
 and os.path.isfile to test the file-existence guard logic.
 """
 
+import os
+import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -57,3 +59,67 @@ class TestRequireOpen:
         session._state = session.State.DATABASE_OPEN
         session._db_file_path = None
         session.require_open()  # should not raise
+
+
+class TestUnpackedFragmentPrecheck:
+    """`open()` must refuse paths with leftover unpacked fragments unless
+    overwrite=True — calling idapro on such a path returns rc=-1 and can
+    leave idalib's internal state corrupted."""
+
+    def setup_method(self):
+        self._orig_state = session._state
+
+    def teardown_method(self):
+        session._state = self._orig_state
+
+    def test_lists_unpacked_fragments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = os.path.join(tmp, "x.so")
+            open(binary, "w").close()
+            for ext in (".id0", ".id1", ".nam"):
+                open(binary + ext, "w").close()
+            found = session._list_unpacked_fragments(binary)
+            assert sorted(found) == sorted(binary + ext for ext in (".id0", ".id1", ".nam"))
+
+    def test_returns_empty_for_clean_path(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = os.path.join(tmp, "x.so")
+            open(binary, "w").close()
+            assert session._list_unpacked_fragments(binary) == []
+
+    def test_does_not_flag_packed_databases(self):
+        """A `.i64` next to the binary is a valid warm cache, not a fragment."""
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = os.path.join(tmp, "x.so")
+            open(binary, "w").close()
+            open(binary + ".i64", "w").close()
+            assert session._list_unpacked_fragments(binary) == []
+
+    def test_open_raises_with_fragments_no_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = os.path.join(tmp, "x.so")
+            open(binary, "w").close()
+            open(binary + ".id0", "w").close()
+
+            session._state = session.State.NO_DATABASE
+            with patch("ida_code.session.idapro.open_database") as mock_open:
+                with pytest.raises(ToolError, match="Unpacked database fragments"):
+                    session.open(binary, auto_analysis=False)
+            mock_open.assert_not_called()  # idalib must not be invoked
+
+    def test_open_proceeds_with_fragments_when_overwrite_true(self):
+        """overwrite=True clears fragments and proceeds with the open."""
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = os.path.join(tmp, "x.so")
+            open(binary, "w").close()
+            open(binary + ".id0", "w").close()
+
+            session._state = session.State.NO_DATABASE
+            with patch("ida_code.session.idapro.open_database", return_value=0), \
+                 patch("ida_code.session._collect_summary", return_value={"path": binary}), \
+                 patch("ida_code.executor.reset"):
+                # Should not raise — fragment is cleaned up before open.
+                session.open(binary, auto_analysis=False, overwrite=True)
+            # Fragment file should have been removed.
+            assert not os.path.isfile(binary + ".id0")
+            session._state = session.State.NO_DATABASE  # reset for teardown

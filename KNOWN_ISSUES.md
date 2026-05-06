@@ -2,28 +2,26 @@
 
 Caveats and gotchas worth knowing before debugging — for humans and AI agents working on this repo.
 
-## fastmcp v3 hangs every idalib tool call
+## fastmcp v3 — checklist before migrating
 
-**Status:** worked around by pinning `fastmcp>=2.0,<3` in `pyproject.toml`.
+We pin `fastmcp>=2.0,<3` in `pyproject.toml`. Don't bump past v2 without first addressing every item below. The root cause of all three is the same: v3 dispatches sync `def` tools via `anyio.to_thread.run_sync` (worker pool), but idalib only works on the thread that imported `idapro`. v2 runs sync tools on the asyncio main thread, sidestepping this.
 
-**Symptom:** Any tool that calls into idalib (`open_database`, `decompile`, `list_functions`, etc.) hangs indefinitely under fastmcp v3 (3.2.4). Tools that don't touch idalib (`get_server_status`, `list_architectures`, `search_docs`, `search_examples`) work fine. After a user-cancel, fastmcp v3 also drops the stdio connection and Claude Code reports `[Tool result missing due to internal error]` until `/mcp` reconnect.
+Verified standalone with no MCP involved: `threading.Thread(target=session.open).start()` hangs the same way under both versions. The thread regression test in `tests/test_e2e.py` will catch a future bump that reintroduces this.
 
-**Cause:** idalib hangs when called from any thread other than the one that imported `idapro` — verified standalone with `threading.Thread(target=session.open).start()`, no MCP involved. fastmcp v3 dispatches sync `def` tools via `anyio.to_thread.run_sync`, putting every call on a worker thread. fastmcp v2 runs sync tools on the asyncio main thread (blocking the event loop during the call), which keeps idalib happy.
+### 1. Sync-tool dispatch hangs idalib
 
-**Workaround:** stay on fastmcp v2. Verified: a call that hung indefinitely on v3 returns in 710ms on v2.14.7.
+Under v3, every tool that calls into idalib (`open_database`, `decompile`, `list_functions`, etc.) hangs indefinitely. Tools that don't touch idalib (`list_architectures`, `search_docs`, `search_examples`) work fine.
 
-**Future v3+ migration path:** spawn a dedicated worker thread at server startup that owns idalib, route every idalib-touching tool through it via callable + Future. The same thread must also be the one that runs `import idapro` (currently at the top of `session.py`).
+**Fix path:** spawn a dedicated worker thread at server startup that owns idalib. Route every idalib-touching tool through it via callable + Future. The same thread must run `import idapro` (currently at the top of `session.py`).
 
-## `open_database` returns `code -1` after partial unpacking
+### 2. User-cancel tears down stdio
 
-**Status:** fixed in 0.2.x by `overwrite=True` cleaning `.id0/.id1/.id2/.nam/.til` (commit `4ae6e24`).
+After the user cancels a hung tool call, fastmcp v3 drops the stdio connection. Claude Code does not auto-reconnect, so every subsequent tool call returns `[Tool result missing due to internal error]` until `/mcp` reconnect. v2 keeps stdio alive across cancels.
 
-If you still see this, a previous open created unpacked database fragments and a later open is refusing to overwrite them. Re-call with `overwrite=True` to clear them, or delete them manually.
+**Fix path:** likely resolves itself once #1 is addressed (no more hangs to cancel). If not, configure fastmcp to keep stdio across cancels, or wrap the transport.
 
-## idalib state corruption after user-cancel
+### 3. User-cancel corrupts idalib state
 
-**Symptom:** after cancelling an in-flight `open_database`, subsequent opens return `-1` instantly with no I/O — the server process is permanently broken.
+If a user cancels an in-flight `open_database` call under v3, subsequent opens return `-1` instantly with no I/O — the server process stays broken until killed. Mechanism: Python can't kill a thread mid-syscall, so the cancelled C call leaves the worker stuck inside `idapro.open_database`; even after asyncio handles the cancel, idalib's internal state stays partly initialized. Doesn't manifest under v2 because the call runs on the main thread (blocking the loop) and either completes or doesn't start.
 
-**Cause:** Python can't kill a thread mid-syscall, so a cancelled `idapro.open_database` leaves an executor thread stuck inside the C call. Even after the cancel propagates back through asyncio, idalib's internal state stays partly initialized.
-
-**Workaround:** kill the MCP server process and reconnect. There is no in-process recovery.
+**Fix path:** also resolves with #1 — running idalib on a dedicated thread we own means we can decline to dispatch a new call while the previous one is still executing, and we never hand idalib to a thread that disappears mid-call.

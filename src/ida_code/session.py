@@ -149,6 +149,17 @@ def open(
 
     if overwrite:
         _remove_existing_databases(open_path)
+    else:
+        fragments = _list_unpacked_fragments(open_path)
+        if fragments:
+            raise ToolError(
+                f"Unpacked database fragments exist: {fragments}. "
+                f"This usually means another IDA instance has this database "
+                f"open, or a previous open failed and left them behind. "
+                f"If no other IDA process is using this database, re-call "
+                f"with overwrite=True to clean them up — but doing so while "
+                f"another IDA has it open will destroy that session's work."
+            )
 
     use_polling = auto_analysis and timeout > 0
     run_auto = auto_analysis and not use_polling
@@ -264,6 +275,24 @@ def _collect_summary(path: str) -> dict:
 
 
 _DB_EXTENSIONS = (".i64", ".idb", ".id0", ".id1", ".id2", ".nam", ".til")
+_UNPACKED_FRAGMENT_EXTS = (".id0", ".id1", ".id2", ".nam", ".til")
+
+
+def _list_unpacked_fragments(path: str) -> list[str]:
+    """Return any unpacked database fragments existing for *path*.
+
+    These exist while a database is open in IDA, and can also be left
+    behind when a previous open failed mid-unpacking. Their presence
+    makes ``idapro.open_database`` refuse the path with rc=-1.
+    """
+    from pathlib import Path
+    p = Path(path)
+    found = []
+    for ext in _UNPACKED_FRAGMENT_EXTS:
+        for candidate in {p.with_suffix(ext), Path(str(p) + ext)}:
+            if candidate.is_file():
+                found.append(str(candidate))
+    return found
 
 
 def _remove_existing_databases(path: str) -> None:
