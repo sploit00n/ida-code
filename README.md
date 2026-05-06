@@ -127,6 +127,10 @@ uv sync --extra dev
 uv run pytest
 ```
 
+## Known issues
+
+See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for caveats and workarounds (e.g. why we pin `fastmcp<3`).
+
 The test suite covers the executor, doc/example search, comments, snapshots, structures, undo, variables, and Mach-O parsing. Tests that need idalib are skipped if it's not available.
 
 ## Credits
