@@ -6,7 +6,7 @@ and os.path.isfile to test the file-existence guard logic.
 
 import os
 import tempfile
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastmcp.exceptions import ToolError
@@ -96,30 +96,34 @@ class TestUnpackedFragmentPrecheck:
             assert session._list_unpacked_fragments(binary) == []
 
     def test_open_raises_with_fragments_no_overwrite(self):
+        """Precheck runs in `_prepare_open` on the calling thread; idapro
+        is never reached, so we don't need to mock it."""
         with tempfile.TemporaryDirectory() as tmp:
             binary = os.path.join(tmp, "x.so")
             open(binary, "w").close()
             open(binary + ".id0", "w").close()
 
             session._state = session.State.NO_DATABASE
-            with patch("ida_code.session.idapro.open_database") as mock_open:
-                with pytest.raises(ToolError, match="Unpacked database fragments"):
-                    session.open(binary, auto_analysis=False)
-            mock_open.assert_not_called()  # idalib must not be invoked
+            with pytest.raises(ToolError, match="Unpacked database fragments"):
+                session.open(binary, auto_analysis=False)
 
     def test_open_proceeds_with_fragments_when_overwrite_true(self):
-        """overwrite=True clears fragments and proceeds with the open."""
+        """overwrite=True clears fragments and proceeds with the open.
+
+        Pre-set ``session.idapro`` to a MagicMock so ``_ensure_idalib_loaded``
+        short-circuits — otherwise the worker would attempt the real import.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             binary = os.path.join(tmp, "x.so")
             open(binary, "w").close()
             open(binary + ".id0", "w").close()
 
             session._state = session.State.NO_DATABASE
-            with patch("ida_code.session.idapro.open_database", return_value=0), \
+            mock_idapro = MagicMock()
+            mock_idapro.open_database.return_value = 0
+            with patch.object(session, "idapro", mock_idapro), \
                  patch("ida_code.session._collect_summary", return_value={"path": binary}), \
                  patch("ida_code.executor.reset"):
-                # Should not raise — fragment is cleaned up before open.
                 session.open(binary, auto_analysis=False, overwrite=True)
-            # Fragment file should have been removed.
             assert not os.path.isfile(binary + ".id0")
             session._state = session.State.NO_DATABASE  # reset for teardown

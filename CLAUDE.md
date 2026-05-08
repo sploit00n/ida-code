@@ -31,7 +31,8 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 ## Architecture
 
 - `config.py` — env-based config (`IDA_INSTALL_DIR`)
-- `session.py` — idalib lifecycle (imports `idapro` at module level — must be first); `require_open()` validates state + database file existence before every IDA API call
+- `ida_thread.py` — single dedicated worker thread that owns idalib. All idalib calls (open/close/decompile/etc.) dispatch through it via `submit()` or `await on_ida_thread()`. Lazy-started on first submit, joined at interpreter exit
+- `session.py` — idalib lifecycle (imports `idapro` lazily inside `_ensure_idalib_loaded()` on the ida-thread); `require_open()` validates state + database file existence; `open/close/info` auto-dispatch to the ida-thread
 - `macho.py` — fat Mach-O architecture listing and slice extraction via `lief`
 - `executor.py` — `exec()` with persistent namespace and stdout/stderr capture
 - `_search_utils.py` — shared search helpers: word-boundary matching (`term_matches`)
@@ -46,7 +47,7 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 - `variables.py` — variable get/set (local via `ida_hexrays`, global via `ida_name` + `ida_typeinf`)
 - `server.py` — FastMCP server with 35 tools, 3 resources, and 2 prompts
 
-`__init__.py` imports `session` first to ensure `idapro` is loaded before any `ida_*` modules.
+`__init__.py` imports `session` first; `idapro` itself is imported lazily on the ida-thread when an idalib call is first made.
 
 ## Documentation
 
@@ -58,8 +59,8 @@ When adding or changing tools/features, update **all** docs files:
 
 ## Key Constraints
 
-- **Single-threaded**: idalib only supports one database at a time, all calls from the same thread (specifically the one that imported `idapro` — usually the main thread). Calling idalib from a worker thread hangs indefinitely.
-- **idapro import order**: `import idapro` must happen before any `ida_*` imports
+- **Single-threaded**: idalib only supports one database at a time, all calls from the thread that imported `idapro`. We pin that thread by routing every idalib call through `ida_thread.submit()` / `await ida_thread.on_ida_thread(...)`. Calling idalib from any other thread hangs indefinitely.
+- **idapro import order**: `import idapro` happens lazily on the ida-thread (inside `_ensure_idalib_loaded()`); subsequent `ida_*` imports must happen on the same thread (i.e., inside functions dispatched through `ida_thread`).
 - **Runtime dependency**: `idapro` is not in pyproject.toml — it's auto-imported from `IDA_INSTALL_DIR/idalib/python/` at startup
 - **fastmcp**: Using the community `fastmcp` package (`from fastmcp import FastMCP`), not the official SDK's `mcp.server.fastmcp`. **Pinned to v2** because v3 dispatches sync tools off-thread and hangs idalib — see `KNOWN_ISSUES.md`.
 

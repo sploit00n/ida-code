@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). `session.open/close/info` auto-dispatch to it. idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control will let us lift the fastmcp v2 pin in a later commit.
+
+### Changed
+
+- **`session.py` lazy idapro import** — `import idapro` moved off module top into `_ensure_idalib_loaded()` which runs on the ida-thread on first use. A targeted `signal.signal` monkey-patch silences the `SIGINT, SIG_DFL` install in `idapro/__init__.py:179` that raises `ValueError` on non-main threads (other signal calls pass through). `session.idapro` is the module-level handle, replacing the prior import.
+
 ## [0.2.2] - 2026-05-07
 
 ### Added

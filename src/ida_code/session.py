@@ -1,32 +1,40 @@
-import atexit
+"""idalib session lifecycle: import, open/close/info, state.
+
+All idalib calls must run on the ida-thread (see ``ida_thread.py``). idalib
+fixes thread affinity at ``import idapro`` time and hangs on any other
+thread. The public ``open()``, ``close()``, ``info()`` here auto-dispatch
+to the ida-thread when called from elsewhere; the actual idapro calls live
+in private ``_*_on_worker`` helpers.
+
+Module globals (``_state``, ``_db_path``, ``_db_file_path``, ``_orphaned``,
+``idapro``) are mutated only by the ida-thread. CPython attribute reads are
+atomic, so reads from other threads are safe without locking.
+"""
+
 import enum
 import logging
 import os
 import sys
+import threading
 
 from ida_code.config import IDA_INSTALL_DIR
+from ida_code import ida_thread
 
 log = logging.getLogger(__name__)
 
-# Add idalib's Python package to sys.path so `idapro` can be imported
-# without requiring manual `pip install`.
+# Add idalib's Python package to sys.path so `import idapro` works on the
+# ida-thread without manual `pip install`. Path setup is thread-safe.
 _idalib_python = IDA_INSTALL_DIR / "idalib" / "python"
 if _idalib_python.is_dir() and str(_idalib_python) not in sys.path:
     sys.path.insert(0, str(_idalib_python))
 
-# Set IDADIR so idapro finds the IDA install directory
-# without requiring `py-activate-idalib.py`.
+# Set IDADIR so idapro finds the IDA install dir without `py-activate-idalib.py`.
 os.environ.setdefault("IDADIR", str(IDA_INSTALL_DIR))
 
-try:
-    import idapro
-except ImportError as e:
-    raise ImportError(
-        f"Could not import idapro from {_idalib_python}. "
-        f"Set IDA_INSTALL_DIR to your IDA Pro 9.2+ installation directory "
-        f"(currently {IDA_INSTALL_DIR}). "
-        f"Original error: {e}"
-    ) from e
+
+# Populated by `_ensure_idalib_loaded()` on the ida-thread on first use.
+# Tests can pre-set this to a Mock to bypass the real import.
+idapro = None
 
 
 class State(enum.Enum):
@@ -38,6 +46,64 @@ _state = State.NO_DATABASE
 _db_path: str | None = None
 _db_file_path: str | None = None  # actual .i64/.idb path on disk
 _orphaned: bool = False  # True when database file vanished from disk
+
+
+def _ensure_idalib_loaded() -> None:
+    """Import ``idapro`` on the current thread (must be the ida-thread).
+
+    Idempotent: subsequent calls return immediately. Targets a known quirk:
+    ``idapro/__init__.py`` calls ``signal.signal(SIGINT, SIG_DFL)`` at module
+    top, which raises ``ValueError`` on non-main threads. We monkey-patch
+    ``signal.signal`` for *only* that exact call so the rest of init runs
+    cleanly without printing a noisy traceback.
+    """
+    global idapro
+    if idapro is not None:
+        return
+
+    import signal as _signal
+    _real_signal_signal = _signal.signal
+
+    def _patched(signum, handler):
+        # Silence init.py's `signal.signal(SIGINT, SIG_DFL)` on non-main thread.
+        # Pass everything else through so other signal hookers in idalib's init
+        # behave normally.
+        on_main = threading.current_thread() is threading.main_thread()
+        if not on_main and signum == _signal.SIGINT and handler == _signal.SIG_DFL:
+            return _signal.SIG_DFL
+        return _real_signal_signal(signum, handler)
+
+    _signal.signal = _patched
+    try:
+        import idapro as _imported_idapro
+    except ImportError as exc:
+        raise ImportError(
+            f"Could not import idapro from {_idalib_python}. "
+            f"Set IDA_INSTALL_DIR to your IDA Pro 9.2+ installation directory "
+            f"(currently {IDA_INSTALL_DIR}). Original error: {exc}"
+        ) from exc
+    finally:
+        _signal.signal = _real_signal_signal
+
+    idapro = _imported_idapro
+    log.debug("idapro imported on ida-thread tid=%d", threading.get_ident())
+
+
+def _on_ida_thread() -> bool:
+    return threading.current_thread() is ida_thread._thread
+
+
+def _dispatch(fn, *args, **kwargs):
+    """Run ``fn`` on the ida-thread, blocking until it returns.
+
+    If already on the ida-thread, runs inline (no submit). Used by the
+    public sync entry points (``open``, ``close``, ``info``) so they're
+    callable from any thread; for async callers prefer
+    ``await ida_thread.on_ida_thread(_impl, ...)`` directly.
+    """
+    if _on_ida_thread():
+        return fn(*args, **kwargs)
+    return ida_thread.submit(fn, *args, **kwargs).result()
 
 
 def get_state() -> State:
@@ -90,10 +156,11 @@ def require_open() -> None:
 
 
 def info() -> dict:
-    """Return a summary dict of the current database.
+    """Return a summary dict of the current database. Auto-dispatches."""
+    return _dispatch(_info_on_worker)
 
-    Raises ``ToolError`` if no database is open.
-    """
+
+def _info_on_worker() -> dict:
     require_open()
     return _collect_summary(_db_path or "<unknown>")
 
@@ -105,36 +172,36 @@ def open(
     timeout: int = 0,
     arch: str | None = None,
 ) -> dict:
-    """Open a binary/database via idalib. Returns a summary dict.
+    """Open a binary/database via idalib. Auto-dispatches to the ida-thread.
 
     *timeout* limits auto-analysis wait time in seconds (0 = unlimited).
     When the timeout expires, the database remains open with partial analysis.
 
     *arch* selects a specific architecture slice from a fat (universal) Mach-O
-    binary (e.g. "arm64e", "x86_64"). The slice is extracted to a temporary
-    thin file before opening. Ignored for non-fat binaries.
+    binary (e.g. "arm64e", "x86_64"). The slice is extracted before opening.
 
     Raises ``ToolError`` on failure.
     """
-    from fastmcp.exceptions import ToolError
+    open_path, original_path = _prepare_open(path, arch, overwrite)
+    return _dispatch(
+        _open_on_worker, open_path, auto_analysis, timeout, arch, original_path,
+    )
 
+
+def _prepare_open(path: str, arch: str | None, overwrite: bool) -> tuple[str, str]:
+    """Asyncio-safe pre-work: resolve arch slice, clean or precheck fragments.
+
+    Returns ``(open_path, original_path)``. Does no idalib calls — runs on
+    whatever thread invokes ``open()``.
+    """
+    from fastmcp.exceptions import ToolError
     from ida_code import macho
 
-    global _state, _db_path, _db_file_path, _orphaned
-
-    _orphaned = False
-
-    # Close any existing database first.
-    if _state == State.DATABASE_OPEN:
-        close()
-
-    # If an architecture is requested, extract the slice from a fat Mach-O.
     open_path = path
     if arch:
         try:
             open_path = macho.extract_slice(path, arch)
         except ValueError:
-            # Not a fat binary or arch not found.
             available = macho.list_architectures(path)
             if available:
                 raise ToolError(
@@ -161,12 +228,33 @@ def open(
                 f"another IDA has it open will destroy that session's work."
             )
 
+    return open_path, path
+
+
+def _open_on_worker(
+    open_path: str,
+    auto_analysis: bool,
+    timeout: int,
+    arch: str | None,
+    original_path: str,
+) -> dict:
+    """Runs on the ida-thread: closes any existing DB, opens, collects summary."""
+    from fastmcp.exceptions import ToolError
+
+    global _state, _db_path, _db_file_path, _orphaned
+
+    _ensure_idalib_loaded()
+    _orphaned = False
+
+    if _state == State.DATABASE_OPEN:
+        _close_on_worker()
+
     use_polling = auto_analysis and timeout > 0
     run_auto = auto_analysis and not use_polling
 
     log.info(
-        "Opening database: %s (auto_analysis=%s, overwrite=%s, timeout=%d, arch=%s)",
-        open_path, auto_analysis, overwrite, timeout, arch,
+        "Opening database: %s (auto_analysis=%s, timeout=%d, arch=%s)",
+        open_path, auto_analysis, timeout, arch,
     )
     rc = idapro.open_database(open_path, run_auto)
     if rc != 0:
@@ -183,16 +271,15 @@ def open(
 
     log.info("Database opened successfully: %s", open_path)
 
-    # Reset executor namespace for the new database.
     from ida_code.executor import reset
     reset()
 
     summary = _collect_summary(open_path)
     if arch:
         summary["arch"] = arch
-        summary["original_path"] = path
+        summary["original_path"] = original_path
     summary["warning"] = (
-        "Auto-analysis timed out \u2014 results may be incomplete."
+        "Auto-analysis timed out — results may be incomplete."
         if timed_out
         else None
     )
@@ -209,7 +296,7 @@ def _wait_for_analysis(timeout: int) -> bool:
     import ida_funcs
 
     deadline = time.monotonic() + timeout
-    interval = 0.5  # seconds between polls
+    interval = 0.5
     last_count = 0
 
     while not ida_auto.auto_is_ok():
@@ -239,7 +326,6 @@ def _collect_summary(path: str) -> dict:
     processor = ida_ida.inf_get_procname()
     bits = 64 if ida_ida.inf_is_64bit() else (32 if ida_ida.inf_is_32bit() else 16)
 
-    # Segments
     segments = []
     for seg_ea in idautils.Segments():
         seg = ida_segment.getseg(seg_ea)
@@ -250,7 +336,6 @@ def _collect_summary(path: str) -> dict:
             "end": f"{seg.end_ea:#x}",
         })
 
-    # Entry points (capped to avoid huge responses for symbol-heavy binaries)
     entry_count = ida_entry.get_entry_qty()
     max_entries = 20
     entry_points = []
@@ -260,7 +345,6 @@ def _collect_summary(path: str) -> dict:
         name = ida_entry.get_entry_name(ordinal)
         entry_points.append({"name": name, "address": f"{ea:#x}"})
 
-    # Function count
     func_count = sum(1 for _ in idautils.Functions())
 
     return {
@@ -296,12 +380,7 @@ def _list_unpacked_fragments(path: str) -> list[str]:
 
 
 def _remove_existing_databases(path: str) -> None:
-    """Remove existing IDA database files and unpacked fragments.
-
-    Includes the unpacked fragment extensions (.id0/.id1/.id2/.nam/.til) so
-    that a half-written database from a previously failed open does not
-    block the next attempt.
-    """
+    """Remove existing IDA database files and unpacked fragments."""
     from pathlib import Path
     p = Path(path)
     for ext in _DB_EXTENSIONS:
@@ -311,11 +390,15 @@ def _remove_existing_databases(path: str) -> None:
 
 
 def close() -> None:
-    """Close the current database."""
+    """Close the current database. Auto-dispatches to the ida-thread."""
+    _dispatch(_close_on_worker)
+
+
+def _close_on_worker() -> None:
     global _state, _db_path, _db_file_path, _orphaned
     if _state == State.DATABASE_OPEN:
         log.info("Closing database")
-        if not _orphaned:
+        if not _orphaned and idapro is not None:
             idapro.close_database()
         _state = State.NO_DATABASE
         _db_path = None
@@ -323,8 +406,3 @@ def close() -> None:
         _orphaned = False
         from ida_code.executor import reset
         reset()
-
-
-@atexit.register
-def _cleanup():
-    close()
