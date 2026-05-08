@@ -8,11 +8,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control will let us lift the fastmcp v2 pin in a later commit.
+- **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control unblocks fastmcp v3 compatibility.
 
 ### Changed
 
-- **All idalib-touching tools are now `async def`** — every `@mcp.tool` that touches idalib (28 tools) dispatches its body via `await on_ida_thread(_impl, ...)`. The 3 non-idalib tools (`list_architectures`, `search_docs`, `search_examples`) stay plain sync `def`. This keeps the asyncio event loop free during idalib work and is transport-agnostic across fastmcp v2 / v3.
+- **fastmcp pin lifted to `>=2.0,<4`** — the ida-thread refactor lets v3 work as well as v2. Verified end-to-end on v3.2.4 with both stdio and in-process transports: `open_database` + `list_functions` + `close_database` complete in <1s on a warm `.i64` cache.
+- **All idalib-touching tools are now `async def`** — every `@mcp.tool` that touches idalib (28 tools) dispatches its body via `await on_ida_thread(_impl, ...)`. The 3 non-idalib tools (`list_architectures`, `search_docs`, `search_examples`) stay plain sync `def`. Keeps the asyncio event loop free during idalib work and is transport-agnostic across fastmcp v2 / v3.
 - **`session.py` lazy idapro import** — `import idapro` moved off module top into `_ensure_idalib_loaded()` which runs on the ida-thread on first use. A targeted `signal.signal` monkey-patch silences the `SIGINT, SIG_DFL` install in `idapro/__init__.py:179` that raises `ValueError` on non-main threads (other signal calls pass through). `session.idapro` is the module-level handle, replacing the prior import.
 
 ### Removed

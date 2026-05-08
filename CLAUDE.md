@@ -62,6 +62,6 @@ When adding or changing tools/features, update **all** docs files:
 - **Single-threaded**: idalib only supports one database at a time, all calls from the thread that imported `idapro`. We pin that thread by routing every idalib call through `ida_thread.submit()` / `await ida_thread.on_ida_thread(...)`. Calling idalib from any other thread hangs indefinitely.
 - **idapro import order**: `import idapro` happens lazily on the ida-thread (inside `_ensure_idalib_loaded()`); subsequent `ida_*` imports must happen on the same thread (i.e., inside functions dispatched through `ida_thread`).
 - **Runtime dependency**: `idapro` is not in pyproject.toml — it's auto-imported from `IDA_INSTALL_DIR/idalib/python/` at startup
-- **fastmcp**: Using the community `fastmcp` package (`from fastmcp import FastMCP`), not the official SDK's `mcp.server.fastmcp`. **Pinned to v2** because v3 dispatches sync tools off-thread and hangs idalib — see `KNOWN_ISSUES.md`.
+- **fastmcp**: Using the community `fastmcp` package (`from fastmcp import FastMCP`), not the official SDK's `mcp.server.fastmcp`. Range `>=2.0,<4`. v3 works because every idalib-touching tool is `async def` and dispatches through `ida_thread`.
 
 Before chasing a hang/crash bug, check `KNOWN_ISSUES.md` first.

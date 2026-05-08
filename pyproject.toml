@@ -20,7 +20,7 @@ classifiers = [
     "Topic :: Software Development :: Disassemblers",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dependencies = ["fastmcp>=2.0,<3", "lief>=0.15"]
+dependencies = ["fastmcp>=2.0,<4", "lief>=0.15"]
 
 [project.urls]
 Homepage = "https://github.com/Dil4rd/ida-code"
