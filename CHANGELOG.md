@@ -8,11 +8,16 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). `session.open/close/info` auto-dispatch to it. idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control will let us lift the fastmcp v2 pin in a later commit.
+- **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control will let us lift the fastmcp v2 pin in a later commit.
 
 ### Changed
 
+- **All idalib-touching tools are now `async def`** — every `@mcp.tool` that touches idalib (28 tools) dispatches its body via `await on_ida_thread(_impl, ...)`. The 3 non-idalib tools (`list_architectures`, `search_docs`, `search_examples`) stay plain sync `def`. This keeps the asyncio event loop free during idalib work and is transport-agnostic across fastmcp v2 / v3.
 - **`session.py` lazy idapro import** — `import idapro` moved off module top into `_ensure_idalib_loaded()` which runs on the ida-thread on first use. A targeted `signal.signal` monkey-patch silences the `SIGINT, SIG_DFL` install in `idapro/__init__.py:179` that raises `ValueError` on non-main threads (other signal calls pass through). `session.idapro` is the module-level handle, replacing the prior import.
+
+### Removed
+
+- **`execute` / `execute_file` `timeout` parameter** — the prior implementation used `signal.SIGALRM`, which only delivers to the process main thread. With user code now running on the ida-thread there's no portable way to interrupt it mid-call, so the parameter was removed rather than left as a silently-ignored knob.
 
 ## [0.2.2] - 2026-05-07
 

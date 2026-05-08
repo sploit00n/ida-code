@@ -49,7 +49,7 @@ def target(tmp_path):
             pass
 
 
-async def _open_and_close(target_path: str) -> float:
+async def _open_call_and_close(target_path: str) -> float:
     async with Client(FastMCPTransport(mcp)) as client:
         t0 = time.monotonic()
         r = await asyncio.wait_for(
@@ -62,6 +62,21 @@ async def _open_and_close(target_path: str) -> float:
         assert isinstance(data, dict), f"unexpected result type: {type(data)}"
         assert data.get("function_count", 0) > 0, f"no functions analyzed: {data}"
 
+        # Regression guard for the "wrong thread" failure mode: any tool that
+        # touches idalib via ida_funcs / idautils must dispatch correctly.
+        # Pre-Phase-3 server.py would raise
+        # ``RuntimeError: Function can be called from the main thread only``
+        # because the tool body ran on whatever thread fastmcp dispatched it
+        # to, not the ida-thread.
+        r = await asyncio.wait_for(
+            client.call_tool("list_functions", {"limit": 5}),
+            timeout=10,
+        )
+        funcs = r.data if hasattr(r, "data") else r
+        assert isinstance(funcs, dict)
+        assert funcs.get("total", 0) > 0
+        assert len(funcs.get("functions", [])) > 0
+
         await asyncio.wait_for(
             client.call_tool("close_database", {}),
             timeout=10,
@@ -69,11 +84,16 @@ async def _open_and_close(target_path: str) -> float:
     return elapsed
 
 
-def test_open_database_via_in_process_client(target):
-    """Open a real binary through the MCP tool surface and verify it returns
-    a populated summary in well under the timeout. A future regression that
-    routes idalib off the main thread would hit the 30s ``wait_for``."""
-    elapsed = asyncio.run(_open_and_close(target))
-    # Generous bound: 16KB binary, ~2s cold standalone. Anything near the
-    # 30s ceiling means dispatch is wrong, not just slow.
+def test_open_call_and_close_via_in_process_client(target):
+    """Open a binary, call a non-open idalib tool, then close — through the
+    fastmcp in-process client. Two regressions this guards against:
+
+    1. idalib calls dispatched off the ida-thread hang or raise
+       ``RuntimeError: Function can be called from the main thread only``.
+    2. A future fastmcp version that routes sync tools through a worker
+       pool would trip the 30s ``wait_for`` on open instead of hanging CI.
+    """
+    elapsed = asyncio.run(_open_call_and_close(target))
+    # 16KB binary opens cold in ~2s standalone. Anything near 30s = dispatch
+    # is broken, not just slow.
     assert elapsed < 15, f"open took {elapsed:.1f}s — possible thread regression"

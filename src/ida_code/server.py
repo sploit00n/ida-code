@@ -16,6 +16,7 @@ from ida_code.config import LOG_LEVEL, MCP_AUTH_TOKEN
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
 from ida_code.example_search import search as _search_examples
+from ida_code.ida_thread import on_ida_thread
 from ida_code import comments as _comments
 from ida_code import snapshots as _snapshots
 from ida_code import structures as _structures
@@ -40,6 +41,13 @@ mcp = FastMCP(
 )
 
 
+# Tools that don't touch idalib stay as plain sync def. Everything else is
+# `async def` and dispatches its body to the ida-thread via `on_ida_thread()`.
+# idalib only works on the thread that imported `idapro`; pinning all idalib
+# calls to a single dedicated worker keeps the asyncio loop free and is
+# transport-agnostic across fastmcp v2 / v3.
+
+
 @mcp.tool
 def list_architectures(path: str) -> list[str]:
     """List architecture slices in a fat (universal) Mach-O binary.
@@ -54,7 +62,7 @@ def list_architectures(path: str) -> list[str]:
 
 
 @mcp.tool
-def open_database(
+async def open_database(
     path: str,
     auto_analysis: bool = True,
     overwrite: bool = False,
@@ -78,32 +86,38 @@ def open_database(
     binary (e.g. "arm64e", "x86_64"). Use list_architectures to discover
     available slices. Ignored for non-fat binaries.
     """
-    return session.open(path, auto_analysis, overwrite, timeout=timeout, arch=arch)
+    open_path, original_path = session._prepare_open(path, arch, overwrite)
+    return await on_ida_thread(
+        session._open_on_worker,
+        open_path, auto_analysis, timeout, arch, original_path,
+    )
 
 
 @mcp.tool
-def get_database_info() -> dict:
+async def get_database_info() -> dict:
     """Return summary info about the current database.
 
     Returns processor type, bitness, segments, entry points, and function count
     without opening or closing anything. If no database is open, says so.
     """
-    return session.info()
+    return await on_ida_thread(session._info_on_worker)
 
 
 @mcp.tool
-def close_database() -> dict:
+async def close_database() -> dict:
     """Close the current database and free resources. Requires an open database.
 
     The executor namespace is cleared. No database will be open after this call.
     """
-    session.require_open()
-    session.close()
-    return {"status": "closed"}
+    def _impl():
+        session.require_open()
+        session._close_on_worker()
+        return {"status": "closed"}
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def execute(code: str, timeout: int = 30) -> dict:
+async def execute(code: str) -> dict:
     """Execute IDAPython code and return captured output. Requires an open database.
 
     The execution namespace persists across calls — variables and functions defined
@@ -114,17 +128,17 @@ def execute(code: str, timeout: int = 30) -> dict:
 
     Python tracebacks are returned as normal output for debugging.
 
-    *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
-
     Returns: ``{"output", "truncated"}``
     """
-    session.require_open()
-    text = _execute(code, timeout=timeout)
-    return {"output": text, "truncated": len(text) >= 50000}
+    def _impl():
+        session.require_open()
+        text = _execute(code)
+        return {"output": text, "truncated": len(text) >= 50000}
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def execute_file(path: str, args: str | None = None, timeout: int = 30) -> dict:
+async def execute_file(path: str, args: str | None = None) -> dict:
     """Execute an IDAPython script file and return captured output. Requires an open database.
 
     Reads the file at `path` and executes it. Optionally, `args` provides
@@ -133,12 +147,8 @@ def execute_file(path: str, args: str | None = None, timeout: int = 30) -> dict:
 
     The execution namespace persists across calls, same as `execute`.
 
-    *timeout* sets the maximum wall-clock seconds (default 30, 0 = unlimited).
-
     Returns: ``{"output", "truncated"}``
     """
-    session.require_open()
-
     p = Path(path)
     if not p.is_file():
         raise ToolError(f"File not found: {path}")
@@ -146,19 +156,21 @@ def execute_file(path: str, args: str | None = None, timeout: int = 30) -> dict:
         code = p.read_text(errors="replace")
     except OSError as e:
         raise ToolError(f"Could not read file: {e}")
-
     if args:
         code = code + "\n" + args
 
-    text = _execute(code, timeout=timeout)
-    return {"output": text, "truncated": len(text) >= 50000}
+    def _impl():
+        session.require_open()
+        text = _execute(code)
+        return {"output": text, "truncated": len(text) >= 50000}
+    return await on_ida_thread(_impl)
 
 
 def _resolve_address(identifier: str) -> int:
     """Resolve a name or numeric string to an address.
 
     Tries hex (with or without ``0x``), then decimal, then IDA name lookup.
-    Returns ``ida_idaapi.BADADDR`` on failure.
+    Returns ``ida_idaapi.BADADDR`` on failure. Must be called on the ida-thread.
     """
     import ida_idaapi
     import ida_name
@@ -166,20 +178,17 @@ def _resolve_address(identifier: str) -> int:
     ea = ida_idaapi.BADADDR
     s = identifier.strip()
 
-    # Try as hex address first (with or without 0x prefix).
     try:
         ea = int(s, 16)
     except ValueError:
         pass
 
-    # Try as decimal address.
     if ea == ida_idaapi.BADADDR:
         try:
             ea = int(s, 10)
         except ValueError:
             pass
 
-    # Try as a name.
     if ea == ida_idaapi.BADADDR:
         ea = ida_name.get_name_ea(ida_idaapi.BADADDR, s)
 
@@ -187,7 +196,7 @@ def _resolve_address(identifier: str) -> int:
 
 
 @mcp.tool
-def decompile(function: str, max_length: int = 10000, offset: int = 0) -> dict:
+async def decompile(function: str, max_length: int = 10000, offset: int = 0) -> dict:
     """Decompile a function and return pseudocode. Requires an open database.
 
     *function* can be a name (e.g. "main", "_objc_msgSend") or a hex address
@@ -200,48 +209,48 @@ def decompile(function: str, max_length: int = 10000, offset: int = 0) -> dict:
     If ``truncated`` is true, call again with ``offset=<offset + max_length>``
     to get the next page.
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_funcs
+        import ida_hexrays
+        import ida_idaapi
 
-    import ida_funcs
-    import ida_hexrays
-    import ida_idaapi
+        ea = _resolve_address(function)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{function}' to an address.")
 
-    ea = _resolve_address(function)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{function}' to an address.")
+        pfn = ida_funcs.get_func(ea)
+        if pfn is None:
+            raise ToolError(f"Address {ea:#x} is not within a recognized function.")
 
-    # Ensure ea is within a function.
-    pfn = ida_funcs.get_func(ea)
-    if pfn is None:
-        raise ToolError(f"Address {ea:#x} is not within a recognized function.")
+        try:
+            cfunc = ida_hexrays.decompile(pfn.start_ea)
+        except ida_hexrays.DecompilationFailure as e:
+            raise ToolError(f"Decompilation failed: {e}")
+        except Exception as e:
+            raise ToolError(f"{type(e).__name__}: {e}")
 
-    try:
-        cfunc = ida_hexrays.decompile(pfn.start_ea)
-    except ida_hexrays.DecompilationFailure as e:
-        raise ToolError(f"Decompilation failed: {e}")
-    except Exception as e:
-        raise ToolError(f"{type(e).__name__}: {e}")
+        if cfunc is None:
+            raise ToolError("Decompilation returned no result.")
 
-    if cfunc is None:
-        raise ToolError("Decompilation returned no result.")
-
-    func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
-    pseudocode = str(cfunc)
-    total_length = len(pseudocode)
-    chunk = pseudocode[offset:offset + max_length]
-    return {
-        "name": func_name,
-        "address": f"{pfn.start_ea:#x}",
-        "size": f"{pfn.end_ea - pfn.start_ea:#x}",
-        "pseudocode": chunk,
-        "offset": offset,
-        "total_length": total_length,
-        "truncated": offset + max_length < total_length,
-    }
+        func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
+        pseudocode = str(cfunc)
+        total_length = len(pseudocode)
+        chunk = pseudocode[offset:offset + max_length]
+        return {
+            "name": func_name,
+            "address": f"{pfn.start_ea:#x}",
+            "size": f"{pfn.end_ea - pfn.start_ea:#x}",
+            "pseudocode": chunk,
+            "offset": offset,
+            "total_length": total_length,
+            "truncated": offset + max_length < total_length,
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def get_disassembly(start: str, length: int = 0x100) -> dict:
+async def get_disassembly(start: str, length: int = 0x100) -> dict:
     """Get disassembly for an address range. Requires an open database.
 
     *start* can be a name (e.g. "main") or address (hex "0x3f08" / "3f08",
@@ -250,36 +259,37 @@ def get_disassembly(start: str, length: int = 0x100) -> dict:
 
     Returns: ``{"start", "end", "count", "instructions": [{"address", "disasm"}]}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        import idc
+        import idautils
 
-    import ida_idaapi
-    import idc
-    import idautils
+        ea = _resolve_address(start)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{start}' to an address.")
 
-    ea = _resolve_address(start)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{start}' to an address.")
+        capped_length = max(1, min(length, 0x10000))
+        end_ea = ea + capped_length
 
-    length = max(1, min(length, 0x10000))
-    end_ea = ea + length
+        instructions: list[dict] = []
+        for head in idautils.Heads(ea, end_ea):
+            instructions.append({"address": f"{head:#x}", "disasm": idc.GetDisasm(head)})
 
-    instructions: list[dict] = []
-    for head in idautils.Heads(ea, end_ea):
-        instructions.append({"address": f"{head:#x}", "disasm": idc.GetDisasm(head)})
+        if not instructions:
+            raise ToolError(f"No instructions found in range {ea:#x}–{end_ea:#x}.")
 
-    if not instructions:
-        raise ToolError(f"No instructions found in range {ea:#x}\u2013{end_ea:#x}.")
-
-    return {
-        "start": f"{ea:#x}",
-        "end": f"{end_ea:#x}",
-        "count": len(instructions),
-        "instructions": instructions,
-    }
+        return {
+            "start": f"{ea:#x}",
+            "end": f"{end_ea:#x}",
+            "count": len(instructions),
+            "instructions": instructions,
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def list_functions(offset: int = 0, limit: int = 50, name_filter: str = "") -> dict:
+async def list_functions(offset: int = 0, limit: int = 50, name_filter: str = "") -> dict:
     """List functions in the database with pagination. Requires an open database.
 
     Returns address, size, and name for each function.
@@ -293,37 +303,38 @@ def list_functions(offset: int = 0, limit: int = 50, name_filter: str = "") -> d
 
     Returns: ``{"functions": [{"address", "size", "name"}], "total", "showing", "offset", "name_filter"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_funcs
+        import idautils
 
-    import ida_funcs
-    import idautils
+        capped_limit = min(limit, 1000)
+        all_funcs = list(idautils.Functions())
+        total = len(all_funcs)
 
-    limit = min(limit, 1000)
-    all_funcs = list(idautils.Functions())
-    total = len(all_funcs)
+        functions: list[dict] = []
+        skipped = 0
+        for ea in all_funcs:
+            name = ida_funcs.get_func_name(ea) or f"sub_{ea:x}"
+            if name_filter and name_filter.lower() not in name.lower():
+                continue
+            if skipped < offset:
+                skipped += 1
+                continue
+            pfn = ida_funcs.get_func(ea)
+            size = pfn.end_ea - pfn.start_ea if pfn else 0
+            functions.append({"address": f"{ea:#x}", "size": f"{size:#x}", "name": name})
+            if len(functions) >= capped_limit:
+                break
 
-    functions: list[dict] = []
-    skipped = 0
-    for ea in all_funcs:
-        name = ida_funcs.get_func_name(ea) or f"sub_{ea:x}"
-        if name_filter and name_filter.lower() not in name.lower():
-            continue
-        if skipped < offset:
-            skipped += 1
-            continue
-        pfn = ida_funcs.get_func(ea)
-        size = pfn.end_ea - pfn.start_ea if pfn else 0
-        functions.append({"address": f"{ea:#x}", "size": f"{size:#x}", "name": name})
-        if len(functions) >= limit:
-            break
-
-    return {
-        "functions": functions,
-        "total": total,
-        "showing": len(functions),
-        "offset": offset,
-        "name_filter": name_filter,
-    }
+        return {
+            "functions": functions,
+            "total": total,
+            "showing": len(functions),
+            "offset": offset,
+            "name_filter": name_filter,
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
@@ -374,18 +385,18 @@ def search_examples(
 
 
 @mcp.tool
-def list_snapshots() -> dict:
+async def list_snapshots() -> dict:
     """List all database snapshots. Requires an open database.
 
     Returns snapshot IDs, descriptions, and filenames for the current database.
 
     Returns: ``{"snapshots": [{"id", "desc", "filename"}], "count"}``
     """
-    return _snapshots.list_snapshots()
+    return await on_ida_thread(_snapshots.list_snapshots)
 
 
 @mcp.tool
-def create_snapshot(desc: str = "") -> dict:
+async def create_snapshot(desc: str = "") -> dict:
     """Create a database snapshot to checkpoint the current state. Requires an open database.
 
     Snapshots let you save the database state before making destructive changes
@@ -395,30 +406,30 @@ def create_snapshot(desc: str = "") -> dict:
 
     Returns: ``{"id", "desc", "filename"}``
     """
-    return _snapshots.create_snapshot(desc)
+    return await on_ida_thread(_snapshots.create_snapshot, desc)
 
 
 @mcp.tool
-def restore_snapshot(snapshot_id: str) -> dict:
+async def restore_snapshot(snapshot_id: str) -> dict:
     """Restore the database to a previous snapshot. Requires an open database.
 
     *snapshot_id* is the snapshot ID from list_snapshots or create_snapshot.
     The executor namespace is reset after restore since the database state changed.
     """
-    return _snapshots.restore_snapshot(snapshot_id)
+    return await on_ida_thread(_snapshots.restore_snapshot, snapshot_id)
 
 
 @mcp.tool
-def delete_snapshot(snapshot_id: str) -> dict:
+async def delete_snapshot(snapshot_id: str) -> dict:
     """Delete a database snapshot by removing its file from disk. Requires an open database.
 
     *snapshot_id* is the snapshot ID from list_snapshots or create_snapshot.
     """
-    return _snapshots.remove_snapshot(snapshot_id)
+    return await on_ida_thread(_snapshots.remove_snapshot, snapshot_id)
 
 
 @mcp.tool
-def get_undo_status() -> dict:
+async def get_undo_status() -> dict:
     """Check what undo/redo actions are available. Requires an open database.
 
     Returns whether undo and redo are possible, along with labels describing
@@ -427,11 +438,11 @@ def get_undo_status() -> dict:
 
     Returns: ``{"can_undo", "undo_action", "can_redo", "redo_action"}``
     """
-    return _undo.get_status()
+    return await on_ida_thread(_undo.get_status)
 
 
 @mcp.tool
-def perform_undo(steps: int = 1) -> dict:
+async def perform_undo(steps: int = 1) -> dict:
     """Undo the last database action(s). Requires an open database.
 
     *steps* is how many undo steps to perform (default 1). If fewer steps
@@ -441,11 +452,11 @@ def perform_undo(steps: int = 1) -> dict:
 
     Returns: ``{"status", "steps_requested", "steps_performed", "actions", "next_undo", "next_redo"}``
     """
-    return _undo.perform_undo(steps)
+    return await on_ida_thread(_undo.perform_undo, steps)
 
 
 @mcp.tool
-def perform_redo(steps: int = 1) -> dict:
+async def perform_redo(steps: int = 1) -> dict:
     """Redo the last undone database action(s). Requires an open database.
 
     *steps* is how many redo steps to perform (default 1). If fewer steps
@@ -455,11 +466,11 @@ def perform_redo(steps: int = 1) -> dict:
 
     Returns: ``{"status", "steps_requested", "steps_performed", "actions", "next_undo", "next_redo"}``
     """
-    return _undo.perform_redo(steps)
+    return await on_ida_thread(_undo.perform_redo, steps)
 
 
 @mcp.tool
-def list_structures(offset: int = 0, limit: int = 50, name_filter: str = "") -> dict:
+async def list_structures(offset: int = 0, limit: int = 50, name_filter: str = "") -> dict:
     """List structures (structs/unions) in the database with pagination. Requires an open database.
 
     Returns name, size, alignment, and member count for each structure.
@@ -471,11 +482,13 @@ def list_structures(offset: int = 0, limit: int = 50, name_filter: str = "") -> 
 
     Returns: ``{"structures": [{"name", "size", "alignment", "member_count"}], "total", "showing", "offset", "name_filter"}``
     """
-    return _structures.list_structures(offset, min(limit, 1000), name_filter)
+    return await on_ida_thread(
+        _structures.list_structures, offset, min(limit, 1000), name_filter,
+    )
 
 
 @mcp.tool
-def get_structure(name: str) -> dict:
+async def get_structure(name: str) -> dict:
     """Get detailed info about a structure (struct/union) by name. Requires an open database.
 
     Returns name, size, alignment, is_union flag, member count, and the full
@@ -483,11 +496,11 @@ def get_structure(name: str) -> dict:
 
     Returns: ``{"name", "size", "is_union", "alignment", "member_count", "definition"}``
     """
-    return _structures.get_structure(name)
+    return await on_ida_thread(_structures.get_structure, name)
 
 
 @mcp.tool
-def create_structure(definition: str) -> dict:
+async def create_structure(definition: str) -> dict:
     """Create a new structure from a C definition string. Requires an open database.
 
     *definition* is a valid C struct or union definition, e.g.:
@@ -496,11 +509,11 @@ def create_structure(definition: str) -> dict:
     Fails if a structure with the same name already exists.
     Returns the newly created structure details.
     """
-    return _structures.create_structure(definition)
+    return await on_ida_thread(_structures.create_structure, definition)
 
 
 @mcp.tool
-def edit_structure(definition: str) -> dict:
+async def edit_structure(definition: str) -> dict:
     """Edit an existing structure by replacing its C definition. Requires an open database.
 
     *definition* is a valid C struct or union definition with the same name
@@ -509,21 +522,21 @@ def edit_structure(definition: str) -> dict:
     Fails if the structure does not exist.
     Returns the updated structure details.
     """
-    return _structures.edit_structure(definition)
+    return await on_ida_thread(_structures.edit_structure, definition)
 
 
 @mcp.tool
-def delete_structure(name: str) -> dict:
+async def delete_structure(name: str) -> dict:
     """Delete a structure (struct/union) by name. Requires an open database.
 
     Removes the named type from the database type library.
     Fails if the structure does not exist.
     """
-    return _structures.delete_structure(name)
+    return await on_ida_thread(_structures.delete_structure, name)
 
 
 @mcp.tool
-def get_variable(name: str, scope: str | None = None) -> dict:
+async def get_variable(name: str, scope: str | None = None) -> dict:
     """Get info about a variable by name. Requires an open database.
 
     If *scope* is provided, looks up a **local** (decompiler) variable
@@ -538,24 +551,24 @@ def get_variable(name: str, scope: str | None = None) -> dict:
     Returns (local): ``{"name", "type", "width", "is_arg", "function", "scope": "local"}``
     Returns (global): ``{"name", "type", "address", "scope": "global"}``
     """
-    session.require_open()
-
-    import ida_idaapi
-
-    if scope is not None:
-        func_ea = _resolve_address(scope)
-        if func_ea == ida_idaapi.BADADDR:
-            raise ToolError(f"Could not resolve function '{scope}' to an address.")
-        return _variables.get_local_variable(func_ea, name)
-    else:
-        ea = _resolve_address(name)
-        if ea == ida_idaapi.BADADDR:
-            raise ToolError(f"Could not resolve '{name}' to an address.")
-        return _variables.get_global_variable(ea)
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        if scope is not None:
+            func_ea = _resolve_address(scope)
+            if func_ea == ida_idaapi.BADADDR:
+                raise ToolError(f"Could not resolve function '{scope}' to an address.")
+            return _variables.get_local_variable(func_ea, name)
+        else:
+            ea = _resolve_address(name)
+            if ea == ida_idaapi.BADADDR:
+                raise ToolError(f"Could not resolve '{name}' to an address.")
+            return _variables.get_global_variable(ea)
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def set_variable(
+async def set_variable(
     name: str,
     scope: str | None = None,
     new_name: str | None = None,
@@ -572,27 +585,27 @@ def set_variable(
     At least one of *new_name* or *new_type* must be provided.
     Local variables require Hex-Rays.
     """
-    session.require_open()
-
     if new_name is None and new_type is None:
         raise ToolError("At least one of new_name or new_type must be provided.")
 
-    import ida_idaapi
-
-    if scope is not None:
-        func_ea = _resolve_address(scope)
-        if func_ea == ida_idaapi.BADADDR:
-            raise ToolError(f"Could not resolve function '{scope}' to an address.")
-        return _variables.set_local_variable(func_ea, name, new_name, new_type)
-    else:
-        ea = _resolve_address(name)
-        if ea == ida_idaapi.BADADDR:
-            raise ToolError(f"Could not resolve '{name}' to an address.")
-        return _variables.set_global_variable(ea, new_name, new_type)
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        if scope is not None:
+            func_ea = _resolve_address(scope)
+            if func_ea == ida_idaapi.BADADDR:
+                raise ToolError(f"Could not resolve function '{scope}' to an address.")
+            return _variables.set_local_variable(func_ea, name, new_name, new_type)
+        else:
+            ea = _resolve_address(name)
+            if ea == ida_idaapi.BADADDR:
+                raise ToolError(f"Could not resolve '{name}' to an address.")
+            return _variables.set_global_variable(ea, new_name, new_type)
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def get_comment(address: str, comment_type: CommentTypeOrAll = "") -> dict:
+async def get_comment(address: str, comment_type: CommentTypeOrAll = "") -> dict:
     """Get comment(s) at an address. Requires an open database.
 
     *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -606,18 +619,18 @@ def get_comment(address: str, comment_type: CommentTypeOrAll = "") -> dict:
     - **anterior** — multi-line block before the address
     - **posterior** — multi-line block after the address
     """
-    session.require_open()
-
-    import ida_idaapi
-
-    ea = _resolve_address(address)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{address}' to an address.")
-    return _comments.get_comment(ea, comment_type)
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        ea = _resolve_address(address)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{address}' to an address.")
+        return _comments.get_comment(ea, comment_type)
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def set_comment(address: str, comment: str, comment_type: CommentType = "regular") -> dict:
+async def set_comment(address: str, comment: str, comment_type: CommentType = "regular") -> dict:
     """Set a comment at an address. Requires an open database.
 
     *address* can be a name or hex address.
@@ -625,36 +638,36 @@ def set_comment(address: str, comment: str, comment_type: CommentType = "regular
 
     Returns: ``{"address", "comment_type", "comment", "status": "updated"}``
     """
-    session.require_open()
-
-    import ida_idaapi
-
-    ea = _resolve_address(address)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{address}' to an address.")
-    return _comments.set_comment(ea, comment, comment_type)
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        ea = _resolve_address(address)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{address}' to an address.")
+        return _comments.set_comment(ea, comment, comment_type)
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def delete_comment(address: str, comment_type: CommentType = "regular") -> dict:
+async def delete_comment(address: str, comment_type: CommentType = "regular") -> dict:
     """Delete a comment at an address. Requires an open database.
 
     *address* can be a name or hex address.
 
     Returns: ``{"address", "comment_type", "status": "deleted"}``
     """
-    session.require_open()
-
-    import ida_idaapi
-
-    ea = _resolve_address(address)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{address}' to an address.")
-    return _comments.delete_comment(ea, comment_type)
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        ea = _resolve_address(address)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{address}' to an address.")
+        return _comments.delete_comment(ea, comment_type)
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def rename_function(function: str, new_name: str) -> dict:
+async def rename_function(function: str, new_name: str) -> dict:
     """Rename a function. Requires an open database.
 
     *function* can be a name (e.g. "sub_3f08") or hex address (e.g. "0x3f08").
@@ -662,35 +675,36 @@ def rename_function(function: str, new_name: str) -> dict:
 
     Returns: ``{"address", "old_name", "new_name", "status": "renamed"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_funcs
+        import ida_idaapi
+        import ida_name
 
-    import ida_funcs
-    import ida_idaapi
-    import ida_name
+        ea = _resolve_address(function)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{function}' to an address.")
 
-    ea = _resolve_address(function)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{function}' to an address.")
+        pfn = ida_funcs.get_func(ea)
+        if pfn is None:
+            raise ToolError(f"Address {ea:#x} is not within a recognized function.")
 
-    pfn = ida_funcs.get_func(ea)
-    if pfn is None:
-        raise ToolError(f"Address {ea:#x} is not within a recognized function.")
+        old_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
+        ok = ida_name.set_name(pfn.start_ea, new_name, ida_name.SN_NOCHECK)
+        if not ok:
+            raise ToolError(f"Failed to rename function at {pfn.start_ea:#x} to '{new_name}'.")
 
-    old_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
-    ok = ida_name.set_name(pfn.start_ea, new_name, ida_name.SN_NOCHECK)
-    if not ok:
-        raise ToolError(f"Failed to rename function at {pfn.start_ea:#x} to '{new_name}'.")
-
-    return {
-        "address": f"{pfn.start_ea:#x}",
-        "old_name": old_name,
-        "new_name": new_name,
-        "status": "renamed",
-    }
+        return {
+            "address": f"{pfn.start_ea:#x}",
+            "old_name": old_name,
+            "new_name": new_name,
+            "status": "renamed",
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def retype_function(function: str, new_type: str) -> dict:
+async def retype_function(function: str, new_type: str) -> dict:
     """Change a function's type signature. Requires an open database.
 
     *function* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -698,47 +712,43 @@ def retype_function(function: str, new_type: str) -> dict:
 
     Returns: ``{"address", "name", "old_type", "new_type", "status": "retyped"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_funcs
+        import ida_idaapi
+        import ida_typeinf  # noqa: F401  # ensures the typeinf module is loaded
+        import idc
 
-    import ida_funcs
-    import ida_idaapi
-    import ida_typeinf
-    import idc
+        ea = _resolve_address(function)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{function}' to an address.")
 
-    ea = _resolve_address(function)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{function}' to an address.")
+        pfn = ida_funcs.get_func(ea)
+        if pfn is None:
+            raise ToolError(f"Address {ea:#x} is not within a recognized function.")
 
-    pfn = ida_funcs.get_func(ea)
-    if pfn is None:
-        raise ToolError(f"Address {ea:#x} is not within a recognized function.")
+        func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
+        old_type = idc.get_type(pfn.start_ea) or ""
+        ok = idc.SetType(pfn.start_ea, new_type)
+        if not ok:
+            raise ToolError(
+                f"Failed to apply type '{new_type}' to function '{func_name}' at {pfn.start_ea:#x}. "
+                "Check C syntax."
+            )
 
-    func_name = ida_funcs.get_func_name(pfn.start_ea) or f"sub_{pfn.start_ea:x}"
-
-    # Get old type.
-    old_type = idc.get_type(pfn.start_ea) or ""
-
-    # Apply new type.
-    ok = idc.SetType(pfn.start_ea, new_type)
-    if not ok:
-        raise ToolError(
-            f"Failed to apply type '{new_type}' to function '{func_name}' at {pfn.start_ea:#x}. "
-            "Check C syntax."
-        )
-
-    return {
-        "address": f"{pfn.start_ea:#x}",
-        "name": func_name,
-        "old_type": old_type,
-        "new_type": new_type,
-        "status": "retyped",
-    }
+        return {
+            "address": f"{pfn.start_ea:#x}",
+            "name": func_name,
+            "old_type": old_type,
+            "new_type": new_type,
+            "status": "retyped",
+        }
+    return await on_ida_thread(_impl)
 
 
 def _xref_type_name(xref_type: int) -> str:
-    """Convert an IDA xref type constant to a human-readable name."""
+    """Convert an IDA xref type constant to a human-readable name. ida-thread only."""
     import ida_xref
-
     _NAMES = {
         ida_xref.fl_CF: "call_far",
         ida_xref.fl_CN: "call_near",
@@ -755,7 +765,7 @@ def _xref_type_name(xref_type: int) -> str:
 
 
 @mcp.tool
-def get_xrefs_to(address: str, max_results: int = 100) -> dict:
+async def get_xrefs_to(address: str, max_results: int = 100) -> dict:
     """Get cross-references to an address (who references this?). Requires an open database.
 
     *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -763,33 +773,34 @@ def get_xrefs_to(address: str, max_results: int = 100) -> dict:
 
     Returns: ``{"address", "xrefs": [{"from", "type"}], "count", "truncated"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        import idautils
 
-    import ida_idaapi
-    import idautils
+        ea = _resolve_address(address)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{address}' to an address.")
 
-    ea = _resolve_address(address)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{address}' to an address.")
+        xrefs = []
+        truncated = False
+        for xref in idautils.XrefsTo(ea):
+            if len(xrefs) >= max_results:
+                truncated = True
+                break
+            xrefs.append({"from": f"{xref.frm:#x}", "type": _xref_type_name(xref.type)})
 
-    xrefs = []
-    truncated = False
-    for xref in idautils.XrefsTo(ea):
-        if len(xrefs) >= max_results:
-            truncated = True
-            break
-        xrefs.append({"from": f"{xref.frm:#x}", "type": _xref_type_name(xref.type)})
-
-    return {
-        "address": f"{ea:#x}",
-        "xrefs": xrefs,
-        "count": len(xrefs),
-        "truncated": truncated,
-    }
+        return {
+            "address": f"{ea:#x}",
+            "xrefs": xrefs,
+            "count": len(xrefs),
+            "truncated": truncated,
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def get_xrefs_from(address: str, max_results: int = 100) -> dict:
+async def get_xrefs_from(address: str, max_results: int = 100) -> dict:
     """Get cross-references from an address (what does this reference?). Requires an open database.
 
     *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -797,33 +808,34 @@ def get_xrefs_from(address: str, max_results: int = 100) -> dict:
 
     Returns: ``{"address", "xrefs": [{"to", "type"}], "count", "truncated"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_idaapi
+        import idautils
 
-    import ida_idaapi
-    import idautils
+        ea = _resolve_address(address)
+        if ea == ida_idaapi.BADADDR:
+            raise ToolError(f"Could not resolve '{address}' to an address.")
 
-    ea = _resolve_address(address)
-    if ea == ida_idaapi.BADADDR:
-        raise ToolError(f"Could not resolve '{address}' to an address.")
+        xrefs = []
+        truncated = False
+        for xref in idautils.XrefsFrom(ea):
+            if len(xrefs) >= max_results:
+                truncated = True
+                break
+            xrefs.append({"to": f"{xref.to:#x}", "type": _xref_type_name(xref.type)})
 
-    xrefs = []
-    truncated = False
-    for xref in idautils.XrefsFrom(ea):
-        if len(xrefs) >= max_results:
-            truncated = True
-            break
-        xrefs.append({"to": f"{xref.to:#x}", "type": _xref_type_name(xref.type)})
-
-    return {
-        "address": f"{ea:#x}",
-        "xrefs": xrefs,
-        "count": len(xrefs),
-        "truncated": truncated,
-    }
+        return {
+            "address": f"{ea:#x}",
+            "xrefs": xrefs,
+            "count": len(xrefs),
+            "truncated": truncated,
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def get_strings(min_length: int = 5, max_results: int = 200, name_filter: str = "") -> dict:
+async def get_strings(min_length: int = 5, max_results: int = 200, name_filter: str = "") -> dict:
     """List strings found in the database. Requires an open database.
 
     *min_length* minimum string length to include (default 5).
@@ -833,93 +845,96 @@ def get_strings(min_length: int = 5, max_results: int = 200, name_filter: str = 
 
     Returns: ``{"strings": [{"address", "value", "length", "type"}], "count", "truncated"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_nalt
+        import idautils
 
-    import ida_nalt
-    import idautils
+        _TYPE_NAMES = {0: "C", 1: "C_16", 2: "C_32", 3: "PASCAL", 4: "PASCAL_16", 5: "LEN2", 6: "LEN4", 7: "LEN2_16"}
 
-    _TYPE_NAMES = {0: "C", 1: "C_16", 2: "C_32", 3: "PASCAL", 4: "PASCAL_16", 5: "LEN2", 6: "LEN4", 7: "LEN2_16"}
+        sc = idautils.Strings()
+        sc.setup(
+            strtypes=[ida_nalt.STRTYPE_C, ida_nalt.STRTYPE_C_16],
+            minlen=min_length,
+        )
 
-    sc = idautils.Strings()
-    sc.setup(
-        strtypes=[ida_nalt.STRTYPE_C, ida_nalt.STRTYPE_C_16],
-        minlen=min_length,
-    )
+        strings = []
+        truncated = False
+        for s in sc:
+            value = str(s)
+            if name_filter and name_filter.lower() not in value.lower():
+                continue
+            if len(strings) >= max_results:
+                truncated = True
+                break
+            strings.append({
+                "address": f"{s.ea:#x}",
+                "value": value,
+                "length": s.length,
+                "type": _TYPE_NAMES.get(s.strtype, f"type_{s.strtype}"),
+            })
 
-    strings = []
-    truncated = False
-    for s in sc:
-        value = str(s)
-        if name_filter and name_filter.lower() not in value.lower():
-            continue
-        if len(strings) >= max_results:
-            truncated = True
-            break
-        strings.append({
-            "address": f"{s.ea:#x}",
-            "value": value,
-            "length": s.length,
-            "type": _TYPE_NAMES.get(s.strtype, f"type_{s.strtype}"),
-        })
-
-    return {
-        "strings": strings,
-        "count": len(strings),
-        "truncated": truncated,
-    }
+        return {
+            "strings": strings,
+            "count": len(strings),
+            "truncated": truncated,
+        }
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def get_imports() -> dict:
+async def get_imports() -> dict:
     """List all imported functions grouped by module. Requires an open database.
 
     Returns: ``{"modules": [{"name", "imports": [{"address", "name", "ordinal"}]}], "total_imports"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import ida_nalt
 
-    import ida_nalt
+        modules = []
+        total_imports = 0
 
-    modules = []
-    total_imports = 0
+        for i in range(ida_nalt.get_import_module_qty()):
+            mod_name = ida_nalt.get_import_module_name(i) or f"module_{i}"
+            imports = []
 
-    for i in range(ida_nalt.get_import_module_qty()):
-        mod_name = ida_nalt.get_import_module_name(i) or f"module_{i}"
-        imports = []
+            def _cb(ea, name, ordinal):
+                imports.append({
+                    "address": f"{ea:#x}",
+                    "name": name or "",
+                    "ordinal": ordinal,
+                })
+                return True
 
-        def _cb(ea, name, ordinal):
-            imports.append({
-                "address": f"{ea:#x}",
-                "name": name or "",
-                "ordinal": ordinal,
-            })
-            return True  # Continue enumeration.
+            ida_nalt.enum_import_names(i, _cb)
+            total_imports += len(imports)
+            modules.append({"name": mod_name, "imports": imports})
 
-        ida_nalt.enum_import_names(i, _cb)
-        total_imports += len(imports)
-        modules.append({"name": mod_name, "imports": imports})
-
-    return {"modules": modules, "total_imports": total_imports}
+        return {"modules": modules, "total_imports": total_imports}
+    return await on_ida_thread(_impl)
 
 
 @mcp.tool
-def get_exports() -> dict:
+async def get_exports() -> dict:
     """List all exported functions/symbols. Requires an open database.
 
     Returns: ``{"exports": [{"address", "name", "ordinal"}], "count"}``
     """
-    session.require_open()
+    def _impl():
+        session.require_open()
+        import idautils
 
-    import idautils
+        exports = []
+        for ordinal, ea, name in idautils.Entries():
+            exports.append({
+                "address": f"{ea:#x}",
+                "name": name or "",
+                "ordinal": ordinal,
+            })
 
-    exports = []
-    for ordinal, ea, name in idautils.Entries():
-        exports.append({
-            "address": f"{ea:#x}",
-            "name": name or "",
-            "ordinal": ordinal,
-        })
-
-    return {"exports": exports, "count": len(exports)}
+        return {"exports": exports, "count": len(exports)}
+    return await on_ida_thread(_impl)
 
 
 @mcp.resource("guidelines://standalone_script")
@@ -964,12 +979,10 @@ def _parse_host_port(value: str) -> tuple[str, int]:
     """Parse a ``host:port`` string, defaulting to ``127.0.0.1:8080``."""
     if not value:
         return "127.0.0.1", 8080
-    # Split on the *last* colon so IPv6 addresses work if quoted.
     if ":" in value:
         host, _, port_str = value.rpartition(":")
         host = host or "127.0.0.1"
         return host, int(port_str)
-    # Bare hostname / IP with no port.
     return value, 8080
 
 

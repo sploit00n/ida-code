@@ -1,14 +1,12 @@
 import ast
 import io
 import logging
-import signal
 import sys
 import traceback
 
 log = logging.getLogger(__name__)
 
 _MAX_OUTPUT = 50_000
-_DEFAULT_TIMEOUT = 30  # seconds; 0 = no timeout
 
 # Modules to pre-populate in the execution namespace.
 _PRELOADED_MODULES = [
@@ -48,14 +46,6 @@ def reset() -> None:
     _namespace = _build_namespace()
 
 
-class _Timeout(Exception):
-    pass
-
-
-def _alarm_handler(signum, frame):
-    raise _Timeout()
-
-
 def _exec_repl(code: str, namespace: dict, stdout: io.StringIO) -> None:
     """Execute *code* with REPL-like last-expression printing.
 
@@ -66,8 +56,6 @@ def _exec_repl(code: str, namespace: dict, stdout: io.StringIO) -> None:
     try:
         tree = ast.parse(code)
     except SyntaxError:
-        # Fall back to plain exec if the code can't be parsed (exec will
-        # produce the same SyntaxError with a proper traceback).
         exec(code, namespace)
         return
 
@@ -76,11 +64,9 @@ def _exec_repl(code: str, namespace: dict, stdout: io.StringIO) -> None:
 
     last = tree.body[-1]
     if not isinstance(last, ast.Expr):
-        # Last statement is not a bare expression — exec everything.
         exec(code, namespace)
         return
 
-    # Split: exec all statements except the last, then eval the last.
     if len(tree.body) > 1:
         head = ast.Module(body=tree.body[:-1], type_ignores=tree.type_ignores)
         ast.fix_missing_locations(head)
@@ -92,36 +78,31 @@ def _exec_repl(code: str, namespace: dict, stdout: io.StringIO) -> None:
         stdout.write(repr(result) + "\n")
 
 
-def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
+def execute(code: str) -> str:
     """Execute IDAPython code and return captured output.
 
-    *timeout* sets the maximum wall-clock seconds (0 = unlimited).
-    On expiry the code is interrupted and an error message is returned.
+    Must run on the ida-thread (the namespace pre-loads ida_* modules).
+    No timeout enforcement: prior versions used ``signal.SIGALRM``, which
+    only works on the process main thread. Once idalib is pinned to the
+    ida-thread there's no portable way to interrupt the worker mid-call,
+    so the ``timeout`` parameter was removed from the public ``execute``
+    and ``execute_file`` tools.
     """
     global _namespace
 
-    # Lazy-init namespace on first call.
     if not _namespace:
         _namespace = _build_namespace()
 
     stdout_capture = io.StringIO()
     stderr_capture = io.StringIO()
     old_stdout, old_stderr = sys.stdout, sys.stderr
-    old_handler = None
 
     try:
         sys.stdout = stdout_capture
         sys.stderr = stderr_capture
 
-        if timeout > 0:
-            old_handler = signal.signal(signal.SIGALRM, _alarm_handler)
-            signal.alarm(timeout)
-
-        log.debug("Executing code (%d chars, timeout=%ds)", len(code), timeout)
+        log.debug("Executing code (%d chars)", len(code))
         _exec_repl(code, _namespace, stdout_capture)
-    except _Timeout:
-        log.warning("Execution timed out after %ds", timeout)
-        stderr_capture.write(f"\n\nExecution timed out after {timeout} seconds.")
     except (KeyboardInterrupt, SystemExit) as exc:
         log.warning("%s intercepted from user code", type(exc).__name__)
         stderr_capture.write(f"\n\n{type(exc).__name__} intercepted — the server is still running.\n")
@@ -130,10 +111,6 @@ def execute(code: str, timeout: int = _DEFAULT_TIMEOUT) -> str:
         log.debug("User code raised exception", exc_info=True)
         stderr_capture.write(traceback.format_exc())
     finally:
-        if timeout > 0:
-            signal.alarm(0)  # Cancel any pending alarm.
-            if old_handler is not None:
-                signal.signal(signal.SIGALRM, old_handler)
         sys.stdout = old_stdout
         sys.stderr = old_stderr
 
