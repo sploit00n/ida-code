@@ -171,3 +171,21 @@ class TestSearchCrossLinking:
         with patch("ida_code.example_search.search", return_value=mock_example_results):
             result = search("test", include_examples=True)
             assert "related_examples" not in result
+
+
+class TestIdaproChunksIndexed:
+    """Regression: chunks from ``idalib/python/idapro/*.py`` show up in search
+    results with a sensible ``source_file`` like ``idapro/__init__.py``. Until
+    fixed, search_docs surfaced no Python signature for ``open_database``."""
+
+    @patch("ida_code.doc_search._ensure_indexes")
+    @patch("ida_code.doc_search._html_docs", [])
+    @patch("ida_code.doc_search._py_chunks", [
+        ("open_database", "def open_database(file_path, run_auto):\n    \"\"\"Open a binary or database.\"\"\"\n    pass", "idapro/__init__.py"),
+        ("close_database", "def close_database(save):\n    pass", "idapro/__init__.py"),
+    ])
+    def test_search_finds_idapro_function(self, mock_ensure):
+        from ida_code.doc_search import search
+        result = search("open_database", include_examples=False)
+        names = [r["source"] for r in result["results"]]
+        assert any("idapro/__init__.py" in n for n in names), names

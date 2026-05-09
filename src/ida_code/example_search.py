@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ida_code._search_utils import term_matches
-from ida_code.config import IDA_EXAMPLES_DIR
+from ida_code.config import IDA_EXAMPLES_DIR, IDALIB_EXAMPLES_DIR
 
 log = logging.getLogger(__name__)
 
@@ -307,8 +307,16 @@ def _infer_category(rel_path: str) -> str:
 
 
 def _build_index(examples_dir: Path) -> list[ExampleEntry]:
-    """Build the full example index from index.md and .py files."""
+    """Build the full example index from index.md and .py files.
+
+    Skips silently if *examples_dir* does not exist — so this can be called
+    on the standalone ``idalib/examples`` corpus too, which has a flat layout
+    and no ``index.md`` (entries get all metadata from the AST + docstring).
+    """
     entries: list[ExampleEntry] = []
+
+    if not examples_dir.is_dir():
+        return entries
 
     # Parse index.md if available
     index_md_path = examples_dir / "index.md"
@@ -380,8 +388,16 @@ def _build_index(examples_dir: Path) -> list[ExampleEntry]:
 def _ensure_index():
     global _index
     if _index is None:
-        log.info("Building example index from %s", IDA_EXAMPLES_DIR)
-        _index = _build_index(IDA_EXAMPLES_DIR)
+        log.info(
+            "Building example index from %s and %s",
+            IDA_EXAMPLES_DIR, IDALIB_EXAMPLES_DIR,
+        )
+        # Two corpora: the in-IDA examples (curated via index.md), and the
+        # standalone idalib examples (no manifest, AST-only metadata).
+        _index = (
+            _build_index(IDA_EXAMPLES_DIR)
+            + _build_index(IDALIB_EXAMPLES_DIR)
+        )
         log.info("Indexed %d example scripts", len(_index))
 
 

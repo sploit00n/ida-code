@@ -36,8 +36,8 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 - `macho.py` — fat Mach-O architecture listing and slice extraction via `lief`
 - `executor.py` — `exec()` with persistent namespace and stdout/stderr capture
 - `_search_utils.py` — shared search helpers: word-boundary matching (`term_matches`)
-- `doc_search.py` — keyword search over IDA docs + Python API sources; field-weighted scoring, cross-links to examples
-- `example_search.py` — AST-based search over 125 official IDAPython example scripts
+- `doc_search.py` — keyword search over IDA HTML docs + IDAPython API sources (`python/ida_*.py`, `idautils.py`, `idc.py`) + the standalone idalib `idapro` module (`idalib/python/idapro/*.py`); field-weighted scoring, cross-links to examples
+- `example_search.py` — AST-based search over the 125 official IDAPython example scripts plus the standalone-idalib `idalib/examples/` corpus
 - `guidelines.py` — coding guideline templates (standalone scripts, plugins, IDAPython scripts)
 - `prompts.py` — MCP prompt templates (reverse engineering workflow, script creation guide)
 - `snapshots.py` — database snapshot create/restore/delete via `ida_loader` + `ida_kernwin`

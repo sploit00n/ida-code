@@ -9,6 +9,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control unblocks fastmcp v3 compatibility.
+- **Search corpora cover idalib** — `search_docs` now indexes the `idapro` Python package (`idalib/python/idapro/*.py`) so signatures like `open_database(file_path, run_auto)` surface from the actual Python wrapper. `search_examples` now also walks `idalib/examples/`, so the canonical standalone-idalib example (`idacli.py`) is findable.
 
 ### Changed
 

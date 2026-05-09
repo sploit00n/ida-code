@@ -4,8 +4,12 @@ Tests parsing, scoring, and snippet extraction using synthetic data —
 no IDA installation needed.
 """
 
+import tempfile
+from pathlib import Path
+
 from ida_code.example_search import (
     ExampleEntry,
+    _build_index,
     extract_snippet,
     parse_ast,
     parse_docstring,
@@ -302,3 +306,29 @@ Just a test.
         result = parse_index_md(md)
         assert result["simple"]["apis_used"] == []
         assert result["simple"]["keywords"] == []
+
+
+class TestBuildIndexFlatCorpus:
+    """``_build_index`` must work on a directory with no ``index.md`` (and a
+    flat layout) — that's the shape of ``idalib/examples``. Without this, the
+    standalone idalib examples wouldn't be discoverable via search_examples."""
+
+    def test_flat_corpus_no_index_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "demo.py").write_text(
+                '"""summary: open and close a database."""\n'
+                'import idapro\n'
+                'idapro.open_database("/tmp/x", False)\n'
+            )
+            entries = _build_index(root)
+            assert len(entries) == 1
+            entry = entries[0]
+            assert entry.filename == "demo.py"
+            assert entry.summary == "open and close a database."
+            assert "idapro" in entry.imports
+
+    def test_missing_dir_returns_empty(self):
+        """If the corpus dir doesn't exist, return [] instead of raising."""
+        entries = _build_index(Path("/does/not/exist/here"))
+        assert entries == []

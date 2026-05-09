@@ -5,7 +5,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 from ida_code._search_utils import term_matches
-from ida_code.config import IDA_DOCS_DIR, IDA_PYTHON_DIR
+from ida_code.config import IDA_DOCS_DIR, IDA_PYTHON_DIR, IDALIB_PYTHON_DIR
 
 log = logging.getLogger(__name__)
 
@@ -58,12 +58,22 @@ def _load_py_chunks() -> list[tuple[str, str, str]]:
         p = IDA_PYTHON_DIR / name
         if p.exists():
             _parse_py_file(p, chunks)
+    # Standalone idalib entry-point: idapro/{__init__,config}.py
+    idapro_pkg = IDALIB_PYTHON_DIR / "idapro"
+    if idapro_pkg.is_dir():
+        for py_file in sorted(idapro_pkg.glob("*.py")):
+            _parse_py_file(py_file, chunks, source_name=f"idapro/{py_file.name}")
     return chunks
 
 
-def _parse_py_file(path: Path, chunks: list[tuple[str, str, str]]):
+def _parse_py_file(
+    path: Path,
+    chunks: list[tuple[str, str, str]],
+    source_name: str | None = None,
+):
     """Split a Python file into chunks at top-level def/class boundaries."""
-    source_name = path.name
+    if source_name is None:
+        source_name = path.name
     try:
         lines = path.read_text(errors="replace").splitlines()
     except OSError:

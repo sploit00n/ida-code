@@ -349,9 +349,10 @@ def search_docs(
     Use this to find the right API for a task, check function signatures,
     or understand parameter meanings.
 
-    Searches two corpora:
+    Searches three corpora:
     - IDA HTML documentation (developer guide, user guide, etc.)
-    - IDAPython API source files (ida_*.py function signatures and docstrings)
+    - IDAPython API source files (ida_*.py, idautils.py, idc.py)
+    - The standalone idalib `idapro` package (idalib/python/idapro/*.py)
 
     Uses word-boundary matching: "set" matches "set_name" but not "reset".
 
@@ -375,6 +376,8 @@ def search_examples(
 
     Use this to find code patterns (e.g. "list strings", "decompile",
     "enumerate imports") or see how specific IDA APIs are used in practice.
+    Covers both the in-IDA examples in ``python/examples`` and standalone
+    idalib examples in ``idalib/examples``.
 
     Searches example titles, descriptions, keywords, APIs used, and source code.
     For API signatures and documentation, use `search_docs` instead.
