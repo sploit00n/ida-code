@@ -103,6 +103,48 @@ cfunc = ida_hexrays.decompile(ea)
 if cfunc:
     print(cfunc)
 ```
+
+## Coding Conventions
+
+Hex-Rays' own example scripts follow these — they keep code searchable and
+make symbol provenance obvious:
+
+- **Avoid `idc.py`** for operations that have a typed `ida_*` equivalent.
+  `idc` calls are looser-typed and harder to trace back to their module.
+- **Avoid `idaapi`** — it re-exports symbols from many `ida_*` modules and
+  hides which module a symbol comes from.
+- **Avoid `from X import Y`** — same reason. Keep the module name visible
+  at the call site so readers (and `grep`) can find it.
+- **Double-quote string literals** unless the string contains a literal `"`.
+  Consistent quoting makes grep more predictable.
+
+Source: `<IDA_INSTALL_DIR>/python/examples/README.md`.
+
+## Setup Alternative
+
+The bootstrap in the template above (sys.path insert + IDADIR env) avoids the
+need for `pip install`. The official alternative is to run
+`<IDA_INSTALL_DIR>/py-activate-idalib.py` once and then
+`pip install <IDA_INSTALL_DIR>/idalib/python` so `idapro` is importable
+without sys.path manipulation. See `<IDA_INSTALL_DIR>/idalib/README.txt`.
+
+## Discovering APIs and Examples
+
+Three MCP tools surface IDA Python source and HTML docs without leaving the
+session:
+
+- **`search_docs(query)`** — IDA HTML documentation (developer-guide,
+  user-guide, getting-started).
+- **`search_code(query, kind="library"|"example"|"", imports="...", docstring_only=False)`**
+  — unified search over the IDAPython API source (`ida_*.py`, `idapro/*.py`)
+  plus example scripts. Returns up to N hits with snippets and, when
+  truncated, ``snippet_start_line`` + ``total_lines``.
+- **`get_source(file, start_line, line_count)`** — fetch additional lines
+  from any file ``search_code`` returned. Sandboxed to the indexed corpora.
+
+For "show me everything about function X", a single ``search_code("X")``
+call returns the library definition, example uses, and cross-linked HTML
+docs in one round-trip.
 """
 
 _PLUGIN = """\
@@ -237,6 +279,29 @@ class MyIDBHooks(ida_idp.IDB_Hooks):
    current database (e.g., wrong architecture).
 5. **Cleanup in term()** — Unhook all hooks, unregister all actions, free
    resources. Failing to do so causes crashes on exit or reload.
+
+## Coding Conventions
+
+Hex-Rays' own examples follow these — they keep code searchable and make
+symbol provenance obvious:
+
+- **Avoid `idc.py`** for operations with a typed `ida_*` equivalent.
+- **Avoid `idaapi`** — it re-exports many `ida_*` symbols and hides their
+  module of origin.
+- **Avoid `from X import Y`** — keep the module name at the call site so
+  `grep` and readers can find it.
+- **Double-quote string literals** unless the string contains a literal `"`.
+
+Source: `<IDA_INSTALL_DIR>/python/examples/README.md`.
+
+## Discovering APIs and Examples
+
+- **`search_docs(query)`** — IDA HTML documentation.
+- **`search_code(query, kind="library"|"example"|"", imports="...", docstring_only=False)`**
+  — Python source: library API definitions + example scripts. Truncated
+  results carry ``snippet_start_line`` + ``total_lines``.
+- **`get_source(file, start_line, line_count)`** — fetch more lines from
+  any file ``search_code`` returned. Sandboxed.
 """
 
 _IDAPYTHON_SCRIPT = """\
@@ -347,6 +412,35 @@ import ida_bytes
 for s in idautils.Strings():
     print(f"{s.ea:#x}  {ida_bytes.get_strlit_contents(s.ea, s.length, s.strtype)}")
 ```
+
+## Coding Conventions
+
+Hex-Rays' own examples follow these — they keep code searchable and make
+symbol provenance obvious:
+
+- **Avoid `idc.py`** for operations that have a typed `ida_*` equivalent.
+- **Avoid `idaapi`** — it re-exports many `ida_*` symbols and hides which
+  module a symbol comes from.
+- **Avoid `from X import Y`** — keep the module name at the call site for
+  searchability.
+- **Double-quote string literals** unless the string contains a literal `"`.
+- **Module docstring** with a one-line ``summary:`` (no trailing dot;
+  prefer "list X" over "listing X") and a longer ``description:``. The
+  ``search_code`` tool uses these for ranking and snippet display.
+
+Source: `<IDA_INSTALL_DIR>/python/examples/README.md`.
+
+## Discovering APIs and Examples
+
+- **`search_docs(query)`** — IDA HTML documentation.
+- **`search_code(query, kind="library"|"example"|"", imports="...", docstring_only=False)`**
+  — Python source: library API definitions + example scripts. Truncated
+  results carry ``snippet_start_line`` + ``total_lines``.
+- **`get_source(file, start_line, line_count)`** — fetch more lines from
+  any file ``search_code`` returned. Sandboxed.
+
+For "everything about function X", a single ``search_code("X")`` call
+returns the API definition, working examples, and cross-linked HTML docs.
 """
 
 _GUIDELINES: dict[str, str] = {
