@@ -15,7 +15,7 @@ from ida_code import session
 from ida_code.config import LOG_LEVEL, MCP_AUTH_TOKEN
 from ida_code.executor import execute as _execute
 from ida_code.doc_search import search as _search_docs
-from ida_code.example_search import search as _search_examples
+from ida_code.code_search import search as _search_code
 from ida_code.ida_thread import on_ida_thread
 from ida_code import comments as _comments
 from ida_code import snapshots as _snapshots
@@ -344,47 +344,79 @@ def search_docs(
     max_snippet_length: int = 150,
     include_examples: bool = True,
 ) -> dict:
-    """Look up IDA API functions, constants, and usage. No database needs to be open.
+    """Look up IDA HTML documentation. No database needs to be open.
 
-    Use this to find the right API for a task, check function signatures,
-    or understand parameter meanings.
+    Use this to find prose explanations, user-guide / developer-guide
+    chapters, and conceptual context.
 
-    Searches three corpora:
-    - IDA HTML documentation (developer guide, user guide, etc.)
-    - IDAPython API source files (ida_*.py, idautils.py, idc.py)
-    - The standalone idalib `idapro` package (idalib/python/idapro/*.py)
+    For Python source — library API signatures (``ida_*.py``, ``idapro``)
+    and example scripts — use ``search_code`` instead.
 
     Uses word-boundary matching: "set" matches "set_name" but not "reset".
 
     When *include_examples* is True (default), also returns up to 2 matching
-    example scripts in the ``related_examples`` key.
+    example scripts in the ``related_examples`` key (cross-linked from
+    ``search_code`` with ``kind="example"``).
 
     *max_snippet_length* caps each snippet (default 150 chars).
     """
     return _search_docs(query, max_results, max_snippet_length, include_examples)
 
 
+CodeKind = Literal["library", "example", ""]
+
+
 @mcp.tool
-def search_examples(
+def search_code(
     query: str,
-    max_results: int = 5,
-    max_snippet_lines: int = 10,
+    kind: CodeKind = "",
+    imports: str = "",
     category: ExampleCategory = "",
     level: ExampleLevel = "",
+    max_results: int = 5,
+    max_snippet_lines: int = 10,
+    include_docs: bool = True,
 ) -> dict:
-    """Find working IDAPython code examples for common tasks. No database needs to be open.
+    """Find Python source — library APIs and/or example scripts. No database needs to be open.
 
-    Use this to find code patterns (e.g. "list strings", "decompile",
-    "enumerate imports") or see how specific IDA APIs are used in practice.
-    Covers both the in-IDA examples in ``python/examples`` and standalone
-    idalib examples in ``idalib/examples``.
+    Unified search over:
 
-    Searches example titles, descriptions, keywords, APIs used, and source code.
-    For API signatures and documentation, use `search_docs` instead.
+    - **Library** API definitions: top-level ``def``/``class`` from ``ida_*.py``,
+      ``idautils.py``, ``idc.py``, and the standalone idalib ``idapro`` package.
+      Each result has ``kind="library"``, ``title=name``, and a snippet of
+      the def signature + docstring.
+    - **Example** scripts: the in-IDA examples in ``python/examples`` plus
+      the standalone idalib examples in ``idalib/examples``. Each result has
+      ``kind="example"``, ``title``, ``summary``, ``apis``, and (when relevant)
+      ``imports`` listing third-party libs the script depends on.
+
+    Filters:
+
+    - *kind*: empty string (default) returns both. ``"library"`` and
+      ``"example"`` restrict to one kind.
+    - *imports*: hard filter — only include results whose imports list
+      contains the given module (e.g. ``imports="idapro"`` finds standalone
+      idalib scripts; ``imports="lief"`` finds LIEF-based scripts).
+    - *category*: example-only filter (``ui``, ``disassembler``, etc.).
+      Library results pass through unconditionally.
+    - *level*: example-only filter (``beginner``, etc.).
+
+    When *include_docs* is True (default), the response carries
+    ``related_docs`` with up to 2 matching HTML documentation hits — useful
+    for "show me everything about func X" in one call.
 
     *max_snippet_lines* caps source snippets (default 10 lines).
     """
-    return _search_examples(query, max_results, category, level, max_snippet_lines)
+    return _search_code(
+        query,
+        max_results=max_results,
+        kind=kind,
+        imports=imports,
+        category=category,
+        level=level,
+        max_snippet_lines=max_snippet_lines,
+        include_docs=include_docs,
+    )
 
 
 @mcp.tool

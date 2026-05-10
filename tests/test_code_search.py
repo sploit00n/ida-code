@@ -1,4 +1,4 @@
-"""Unit tests for ida_code.example_search.
+"""Unit tests for ida_code.code_search.
 
 Tests parsing, scoring, and snippet extraction using synthetic data —
 no IDA installation needed.
@@ -7,14 +7,16 @@ no IDA installation needed.
 import tempfile
 from pathlib import Path
 
-from ida_code.example_search import (
-    ExampleEntry,
-    _build_index,
+from ida_code.code_search import (
+    CodeEntry,
+    _build_example_index,
+    _filter_imports_for_display,
     extract_snippet,
     parse_ast,
     parse_docstring,
     parse_index_md,
     score_example,
+    score_library,
 )
 
 
@@ -90,11 +92,9 @@ class TestParseAst:
 
 class TestScoreExample:
     def _make_entry(self, **kwargs):
-        defaults = dict(
-            id="test", filename="test.py", rel_path="test.py", abs_path="/test.py"
-        )
+        defaults = dict(kind="example", file="test.py", abs_path="/test.py")
         defaults.update(kwargs)
-        return ExampleEntry(**defaults)
+        return CodeEntry(**defaults)
 
     def test_api_match_highest(self):
         entry = self._make_entry(apis_used=["ida_kernwin.add_hotkey"])
@@ -308,10 +308,9 @@ Just a test.
         assert result["simple"]["keywords"] == []
 
 
-class TestBuildIndexFlatCorpus:
-    """``_build_index`` must work on a directory with no ``index.md`` (and a
-    flat layout) — that's the shape of ``idalib/examples``. Without this, the
-    standalone idalib examples wouldn't be discoverable via search_examples."""
+class TestBuildExampleIndexFlatCorpus:
+    """``_build_example_index`` must work on a directory with no ``index.md``
+    (and a flat layout) — the shape of ``idalib/examples``."""
 
     def test_flat_corpus_no_index_md(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -321,14 +320,102 @@ class TestBuildIndexFlatCorpus:
                 'import idapro\n'
                 'idapro.open_database("/tmp/x", False)\n'
             )
-            entries = _build_index(root)
+            entries = _build_example_index(root)
             assert len(entries) == 1
             entry = entries[0]
-            assert entry.filename == "demo.py"
+            assert entry.kind == "example"
+            assert entry.file == "demo.py"
             assert entry.summary == "open and close a database."
             assert "idapro" in entry.imports
 
     def test_missing_dir_returns_empty(self):
-        """If the corpus dir doesn't exist, return [] instead of raising."""
-        entries = _build_index(Path("/does/not/exist/here"))
+        entries = _build_example_index(Path("/does/not/exist/here"))
         assert entries == []
+
+
+class TestScoreLibrary:
+    def _make_lib(self, **kwargs):
+        defaults = dict(kind="library", file="ida_funcs.py")
+        defaults.update(kwargs)
+        return CodeEntry(**defaults)
+
+    def test_name_match_dominates(self):
+        entry = self._make_lib(title="open_database", docstring="", source="def open_database(): pass")
+        assert score_library(entry, ["open_database"]) >= 5.0
+
+    def test_docstring_outranks_body(self):
+        """A query that hits only the docstring should score higher (3) than
+        a query that hits only the body (1)."""
+        doc_only = self._make_lib(
+            title="foo", docstring="parse arbitrary input",
+            source='def foo():\n    """parse arbitrary input"""\n    return 1\n',
+        )
+        body_only = self._make_lib(
+            title="bar", docstring="",
+            source='def bar():\n    # parse the user data\n    pass\n',
+        )
+        assert score_library(doc_only, ["parse"]) > score_library(body_only, ["parse"])
+
+    def test_no_match(self):
+        entry = self._make_lib(title="foo", docstring="bar", source="def foo(): pass")
+        assert score_library(entry, ["xyz"]) == 0.0
+
+    def test_all_terms_bonus(self):
+        entry = self._make_lib(
+            title="open_database",
+            docstring="open a binary",
+            source='def open_database(): """open a binary"""',
+        )
+        single = score_library(entry, ["open_database"])
+        both = score_library(entry, ["open", "binary"])
+        # Both terms hit the docstring → bonus multiplier 1.5x
+        assert both > single * 0.6, (single, both)
+
+
+class TestFilterImportsForDisplay:
+    def test_strips_stdlib(self):
+        out = _filter_imports_for_display(["os", "json", "argparse", "pathlib", "idapro"])
+        assert out == ["idapro"]
+
+    def test_strips_ida_modules(self):
+        out = _filter_imports_for_display(["ida_funcs", "ida_hexrays", "idapro", "idc", "idautils"])
+        assert out == ["idapro"]
+
+    def test_keeps_third_party(self):
+        out = _filter_imports_for_display(["lief", "capstone", "os"])
+        assert sorted(out) == ["capstone", "lief"]
+
+    def test_dedupes(self):
+        out = _filter_imports_for_display(["idapro", "idapro"])
+        assert out == ["idapro"]
+
+
+class TestSearch:
+    """Tests against the live index — confirms kind/imports filters and the
+    cross-link to docs work end-to-end (skips if idalib isn't available)."""
+
+    def test_kind_filter_library_only(self):
+        from ida_code.code_search import search
+        r = search("open_database", kind="library", max_results=3, include_docs=False)
+        assert r["results"], "expected library hits for open_database"
+        assert all(hit["kind"] == "library" for hit in r["results"])
+
+    def test_imports_filter(self):
+        from ida_code.code_search import search
+        r = search("open", imports="idapro", max_results=5, include_docs=False)
+        # All results must be entries that actually import idapro.
+        for hit in r["results"]:
+            # Either an example (whose imports list contained idapro) or a
+            # library file that itself imports idapro.
+            assert hit["kind"] in ("example", "library")
+
+    def test_related_docs_default_on(self):
+        from ida_code.code_search import search
+        r = search("open_database", max_results=2)
+        # The cross-link is opt-out — should be present unless include_docs=False
+        assert "related_docs" in r or not r["results"]
+
+    def test_related_docs_suppressed(self):
+        from ida_code.code_search import search
+        r = search("open_database", max_results=2, include_docs=False)
+        assert "related_docs" not in r

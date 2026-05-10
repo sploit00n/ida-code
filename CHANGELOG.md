@@ -11,6 +11,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Dedicated ida-thread** — new `src/ida_code/ida_thread.py`: a single daemon worker thread that owns idalib. Submit work via `submit()` (sync) or `await on_ida_thread()` (async). idalib hangs when called from any thread other than the one that imported `idapro`; pinning all idalib calls to one thread we control unblocks fastmcp v3 compatibility.
 - **Search corpora cover idalib** — `search_docs` now indexes the `idapro` Python package (`idalib/python/idapro/*.py`) so signatures like `open_database(file_path, run_auto)` surface from the actual Python wrapper. `search_examples` now also walks `idalib/examples/`, so the canonical standalone-idalib example (`idacli.py`) is findable.
 
+### Changed (BREAKING)
+
+- **`search_examples` → `search_code`** — unified Python-source search that indexes library APIs (formerly under `search_docs`) plus example scripts. Adds `kind` filter (`""|"library"|"example"`), `imports` filter (e.g. `imports="idapro"` finds standalone-idalib scripts), and `include_docs: bool = True` for a `related_docs` cross-link to HTML docs. Library entries weight docstrings at 3x (between name 5x and body 1x) so docstring matches outrank coincidental code-comment matches. `search_docs` is now HTML-only; its `include_examples` cross-link goes through `search_code(kind="example")` internally.
+
 ### Changed
 
 - **fastmcp pin lifted to `>=2.0,<4`** — the ida-thread refactor lets v3 work as well as v2. Verified end-to-end on v3.2.4 with both stdio and in-process transports: `open_database` + `list_functions` + `close_database` complete in <1s on a warm `.i64` cache.

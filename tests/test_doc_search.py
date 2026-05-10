@@ -6,7 +6,7 @@ synthetic data — no IDA installation needed.
 
 from unittest.mock import patch
 
-from ida_code.doc_search import _excerpt, _score, _score_py, _strip_html
+from ida_code.doc_search import _excerpt, _score, _strip_html
 
 
 class TestStripHtml:
@@ -80,29 +80,6 @@ class TestScore:
         assert score_both > score_one * 2
 
 
-class TestScorePy:
-    def test_name_match_highest(self):
-        """Name match should score higher than body-only match."""
-        name_score = _score_py(["get_func"], "get_func", "")
-        body_score = _score_py(["get_func"], "other", "get_func is called")
-        assert name_score > body_score
-
-    def test_name_match_value(self):
-        score = _score_py(["get_func"], "get_func", "")
-        assert score >= 5.0
-
-    def test_body_only_match(self):
-        score = _score_py(["get_func"], "other_name", "get_func is used here")
-        assert 0 < score < 5.0
-
-    def test_no_match(self):
-        assert _score_py(["xyz"], "foo", "bar baz") == 0
-
-    def test_boundary_respected(self):
-        """'set' should not match name 'reset'."""
-        assert _score_py(["set"], "reset", "") == 0
-
-
 class TestExcerpt:
     def test_short_text_returned_fully(self):
         result = _excerpt("hello world", ["hello"], max_len=300)
@@ -135,26 +112,29 @@ class TestExcerpt:
 
 
 class TestSearchCrossLinking:
-    """Test that search() includes related_examples when available."""
+    """Test that search() includes related_examples when available.
+
+    The cross-link now goes through code_search (with kind="example") instead
+    of the old example_search module — but the response field name and
+    semantics stay the same for back-compat.
+    """
 
     @patch("ida_code.doc_search._ensure_indexes")
     @patch("ida_code.doc_search._html_docs", [("Test Title", "test body text", "test.html")])
-    @patch("ida_code.doc_search._py_chunks", [])
     def test_related_examples_included(self, mock_ensure):
         from ida_code.doc_search import search
 
-        mock_example_results = {
+        mock_code_results = {
             "query": "test",
-            "results": [{"title": "Example", "file": "test.py", "score": 5.0}],
+            "results": [{"kind": "example", "title": "Example", "file": "test.py", "score": 5.0}],
         }
-        with patch("ida_code.example_search.search", return_value=mock_example_results):
+        with patch("ida_code.code_search.search", return_value=mock_code_results):
             result = search("test", include_examples=True)
             assert "related_examples" in result
             assert len(result["related_examples"]) == 1
 
     @patch("ida_code.doc_search._ensure_indexes")
     @patch("ida_code.doc_search._html_docs", [("Test Title", "test body text", "test.html")])
-    @patch("ida_code.doc_search._py_chunks", [])
     def test_no_related_examples_when_disabled(self, mock_ensure):
         from ida_code.doc_search import search
 
@@ -163,29 +143,14 @@ class TestSearchCrossLinking:
 
     @patch("ida_code.doc_search._ensure_indexes")
     @patch("ida_code.doc_search._html_docs", [("Test Title", "test body text", "test.html")])
-    @patch("ida_code.doc_search._py_chunks", [])
     def test_no_related_examples_when_none_match(self, mock_ensure):
         from ida_code.doc_search import search
 
-        mock_example_results = {"query": "test", "results": []}
-        with patch("ida_code.example_search.search", return_value=mock_example_results):
+        empty = {"query": "test", "results": []}
+        with patch("ida_code.code_search.search", return_value=empty):
             result = search("test", include_examples=True)
             assert "related_examples" not in result
 
 
-class TestIdaproChunksIndexed:
-    """Regression: chunks from ``idalib/python/idapro/*.py`` show up in search
-    results with a sensible ``source_file`` like ``idapro/__init__.py``. Until
-    fixed, search_docs surfaced no Python signature for ``open_database``."""
-
-    @patch("ida_code.doc_search._ensure_indexes")
-    @patch("ida_code.doc_search._html_docs", [])
-    @patch("ida_code.doc_search._py_chunks", [
-        ("open_database", "def open_database(file_path, run_auto):\n    \"\"\"Open a binary or database.\"\"\"\n    pass", "idapro/__init__.py"),
-        ("close_database", "def close_database(save):\n    pass", "idapro/__init__.py"),
-    ])
-    def test_search_finds_idapro_function(self, mock_ensure):
-        from ida_code.doc_search import search
-        result = search("open_database", include_examples=False)
-        names = [r["source"] for r in result["results"]]
-        assert any("idapro/__init__.py" in n for n in names), names
+# `idapro/__init__.py` chunk indexing now lives in `tests/test_code_search.py`
+# (see TestSearch).
