@@ -666,6 +666,11 @@ def search(
 
 
 def _to_result_dict(score: float, entry: CodeEntry, terms: list[str], max_lines: int) -> dict:
+    """Build a result dict, omitting fields whose value is empty.
+
+    Empty fields (``""`` or ``[]``) get dropped from the JSON to keep the
+    response compact for LLM consumers — they only carry signal when set.
+    """
     if entry.kind == "library":
         snippet = extract_snippet(
             entry.source, terms, max_lines=max_lines, skip_module_docstring=False,
@@ -678,19 +683,24 @@ def _to_result_dict(score: float, entry: CodeEntry, terms: list[str], max_lines:
             "score": score,
         }
 
-    # kind == "example"
+    # kind == "example": every optional field is conditionally emitted.
     snippet = extract_snippet(entry.source, terms, max_lines=max_lines)
-    out = {
+    out: dict = {
         "kind": "example",
         "title": entry.title,
         "file": entry.file,
-        "level": entry.level,
-        "category": entry.category,
-        "summary": entry.summary,
-        "apis": entry.apis_used[:10] or entry.api_calls[:10],
         "snippet": snippet,
         "score": score,
     }
+    if entry.level:
+        out["level"] = entry.level
+    if entry.category:
+        out["category"] = entry.category
+    if entry.summary:
+        out["summary"] = entry.summary
+    apis = entry.apis_used[:10] or entry.api_calls[:10]
+    if apis:
+        out["apis"] = apis
     filtered_imports = _filter_imports_for_display(entry.imports)
     if filtered_imports:
         out["imports"] = filtered_imports

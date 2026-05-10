@@ -13,7 +13,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed (BREAKING)
 
-- **`search_examples` → `search_code`** — unified Python-source search that indexes library APIs (formerly under `search_docs`) plus example scripts. Adds `kind` filter (`""|"library"|"example"`), `imports` filter (e.g. `imports="idapro"` finds standalone-idalib scripts), and `include_docs: bool = True` for a `related_docs` cross-link to HTML docs. Library entries weight docstrings at 3x (between name 5x and body 1x) so docstring matches outrank coincidental code-comment matches. `search_docs` is now HTML-only; its `include_examples` cross-link goes through `search_code(kind="example")` internally.
+- **`search_examples` → `search_code`** — unified Python-source search that indexes library APIs (formerly under `search_docs`) plus example scripts. Adds `kind` filter (`""|"library"|"example"`), `imports` filter (e.g. `imports="idapro"` finds standalone-idalib scripts), and `include_docs: bool = True` for a `related_docs` cross-link to HTML docs. Library entries weight docstrings at 3x (between name 5x and body 1x) so docstring matches outrank coincidental code-comment matches. Result objects omit empty fields (level/category/summary/apis/imports) to save tokens. `search_docs` is now HTML-only; its `include_examples` cross-link goes through `search_code(kind="example")` internally.
 
 ### Changed
 
