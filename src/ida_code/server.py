@@ -373,8 +373,10 @@ def search_code(
     imports: str = "",
     category: ExampleCategory = "",
     level: ExampleLevel = "",
+    docstring_only: bool = False,
     max_results: int = 5,
     max_snippet_lines: int = 10,
+    max_snippet_line_chars: int = 200,
     include_docs: bool = True,
 ) -> dict:
     """Find Python source — library APIs and/or example scripts. No database needs to be open.
@@ -383,12 +385,13 @@ def search_code(
 
     - **Library** API definitions: top-level ``def``/``class`` from ``ida_*.py``,
       ``idautils.py``, ``idc.py``, and the standalone idalib ``idapro`` package.
-      Each result has ``kind="library"``, ``title=name``, and a snippet of
-      the def signature + docstring.
+      Result fields: ``kind`` (omitted when *kind* is set), ``title``,
+      ``file``, ``snippet``, plus ``snippet_start_line`` + ``total_lines``
+      when truncated.
     - **Example** scripts: the in-IDA examples in ``python/examples`` plus
-      the standalone idalib examples in ``idalib/examples``. Each result has
-      ``kind="example"``, ``title``, ``summary``, ``apis``, and (when relevant)
-      ``imports`` listing third-party libs the script depends on.
+      the standalone idalib examples in ``idalib/examples``. Result fields:
+      ``kind``, ``file``, ``snippet``, plus optional ``title``, ``level``,
+      ``category``, ``summary``, ``imports`` when set.
 
     Filters:
 
@@ -400,12 +403,24 @@ def search_code(
     - *category*: example-only filter (``ui``, ``disassembler``, etc.).
       Library results pass through unconditionally.
     - *level*: example-only filter (``beginner``, etc.).
+    - *docstring_only*: when ``True``, scoring restricts to docstring
+      text only (library: docstring; example: summary + description).
+      Useful for "find a function that DOES X" semantic queries that
+      should ignore identifier-noise hits. Default ``False``.
+
+    Snippet sizing:
+
+    - *max_snippet_lines* caps the snippet's vertical height (default 10).
+    - *max_snippet_line_chars* truncates each line at this width with
+      ``...`` (default 200; set 0 to disable). Avoids one ultra-long
+      docstring line bloating the response.
+    - When the snippet doesn't cover the full source, the result includes
+      ``snippet_start_line`` (1-based, file-absolute) and ``total_lines``.
+      These let a follow-up read fetch the rest at the right offset.
 
     When *include_docs* is True (default), the response carries
     ``related_docs`` with up to 2 matching HTML documentation hits — useful
     for "show me everything about func X" in one call.
-
-    *max_snippet_lines* caps source snippets (default 10 lines).
     """
     return _search_code(
         query,
@@ -414,7 +429,9 @@ def search_code(
         imports=imports,
         category=category,
         level=level,
+        docstring_only=docstring_only,
         max_snippet_lines=max_snippet_lines,
+        max_snippet_line_chars=max_snippet_line_chars,
         include_docs=include_docs,
     )
 

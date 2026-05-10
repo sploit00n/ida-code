@@ -168,35 +168,61 @@ class TestScoreExample:
 class TestExtractSnippet:
     def test_basic(self):
         source = '"""\nsummary: test\n"""\nimport ida_funcs\n\ndef main():\n    pass\n'
-        snippet = extract_snippet(source, ["main"])
-        assert "def main" in snippet
-        # Docstring should be skipped
-        assert "summary:" not in snippet
+        text, _, _ = extract_snippet(source, ["main"])
+        assert "def main" in text
+        assert "summary:" not in text
 
     def test_no_docstring(self):
         source = "import ida_funcs\n\ndef main():\n    pass\n"
-        snippet = extract_snippet(source, ["main"])
-        assert "def main" in snippet
+        text, _, _ = extract_snippet(source, ["main"])
+        assert "def main" in text
 
     def test_term_centered(self):
         lines = ["import os"] + [f"line_{i}" for i in range(30)] + ["target_line"]
         source = "\n".join(lines)
-        snippet = extract_snippet(source, ["target_line"], max_lines=5)
-        assert "target_line" in snippet
+        text, _, _ = extract_snippet(source, ["target_line"], max_lines=5)
+        assert "target_line" in text
 
     def test_empty_source(self):
-        assert extract_snippet("", ["foo"]) == ""
+        text, start, length = extract_snippet("", ["foo"])
+        assert text == ""
+        assert start == 0
+        assert length == 0
+
+    def test_returns_length(self):
+        source = "line1\nline2\nline3\nline4\n"
+        _, start, length = extract_snippet(source, [], max_lines=2,
+                                            skip_module_docstring=False)
+        assert start == 0
+        assert length == 2
 
     def test_no_terms(self):
         source = "line1\nline2\nline3\n"
-        snippet = extract_snippet(source, [], max_lines=2)
-        assert "line1" in snippet
+        text, _, _ = extract_snippet(source, [], max_lines=2)
+        assert "line1" in text
 
     def test_docstring_skipped(self):
         source = '"""\nsummary: skip me\n\ndescription:\n  should not appear\n\nlevel: beginner\n"""\nimport ida_funcs\ncode_here = True\n'
-        snippet = extract_snippet(source, ["code_here"])
-        assert "skip me" not in snippet
-        assert "code_here" in snippet
+        text, _, _ = extract_snippet(source, ["code_here"])
+        assert "skip me" not in text
+        assert "code_here" in text
+
+    def test_per_line_truncation(self):
+        """Ultra-long lines get truncated with '...' rather than bloating the snippet."""
+        long = "x = " + "y" * 500
+        source = f"import os\n{long}\nz = 1\n"
+        text, _, _ = extract_snippet(source, ["x"], max_lines=5, max_line_chars=50,
+                                      skip_module_docstring=False)
+        # The long line was truncated (no full 500-y string survives)
+        assert "y" * 500 not in text
+        assert "..." in text
+
+    def test_per_line_disabled_when_zero(self):
+        long = "x = " + "y" * 500
+        source = f"import os\n{long}\n"
+        text, _, _ = extract_snippet(source, ["x"], max_lines=5, max_line_chars=0,
+                                      skip_module_docstring=False)
+        assert "y" * 500 in text
 
 
 class TestParseIndexMd:
@@ -388,6 +414,83 @@ class TestFilterImportsForDisplay:
     def test_dedupes(self):
         out = _filter_imports_for_display(["idapro", "idapro"])
         assert out == ["idapro"]
+
+
+class TestDocstringOnly:
+    """``docstring_only=True`` restricts scoring so identifier hits don't
+    pollute semantic queries like 'open binary file'."""
+
+    def _lib(self, **kw):
+        defaults = dict(kind="library", file="x.py")
+        defaults.update(kw)
+        return CodeEntry(**defaults)
+
+    def test_library_skips_name_when_docstring_only(self):
+        entry = self._lib(title="open_database", docstring="completely unrelated text",
+                          source="def open_database(): pass")
+        all_score = score_library(entry, ["open_database"], docstring_only=False)
+        doc_score = score_library(entry, ["open_database"], docstring_only=True)
+        assert all_score >= 5.0
+        assert doc_score == 0.0  # name skipped, docstring doesn't contain term
+
+    def test_library_keeps_docstring(self):
+        entry = self._lib(title="foo", docstring="parse and validate user input",
+                          source='def foo():\n    """parse and validate user input"""')
+        score = score_library(entry, ["parse"], docstring_only=True)
+        assert score >= 3.0
+
+    def _ex(self, **kw):
+        defaults = dict(kind="example", file="t.py")
+        defaults.update(kw)
+        return CodeEntry(**defaults)
+
+    def test_example_keeps_summary_and_description(self):
+        entry = self._ex(summary="rename a function",
+                         description="walks all functions and renames them",
+                         apis_used=["ida_name.set_name"], source="x = 1")
+        score = score_example(entry, ["rename"], docstring_only=True)
+        assert score >= 3.0
+
+    def test_example_skips_apis_when_docstring_only(self):
+        entry = self._ex(summary="no match here",
+                         apis_used=["ida_name.set_name"],
+                         source="ida_name.set_name(0, 'foo')")
+        all_score = score_example(entry, ["set_name"], docstring_only=False)
+        doc_score = score_example(entry, ["set_name"], docstring_only=True)
+        assert all_score > 0
+        assert doc_score == 0.0
+
+
+class TestResultPositionMetadata:
+    """Truncated snippets carry snippet_start_line + total_lines so the LLM
+    can call get_source(file, line) to fetch more context."""
+
+    def test_library_truncated_emits_position(self):
+        from ida_code.code_search import _to_result_dict
+        # 50-line chunk, snippet shows 5 lines → truncated
+        body_lines = [f"    line_{i} = {i}" for i in range(50)]
+        source = "def foo():\n" + "\n".join(body_lines) + "\n"
+        entry = CodeEntry(
+            kind="library", title="foo", file="ida_funcs.py",
+            source=source, docstring="",
+            file_start_line=100, file_total_lines=500,
+        )
+        out = _to_result_dict(entry, ["line_25"], max_lines=5, max_line_chars=200)
+        assert out["snippet_start_line"] >= 100
+        assert out["total_lines"] == 500
+
+    def test_no_truncation_no_position(self):
+        from ida_code.code_search import _to_result_dict
+        source = "def foo(): pass"
+        entry = CodeEntry(
+            kind="library", title="foo", file="x.py",
+            source=source, docstring="",
+            file_start_line=1, file_total_lines=1,
+        )
+        out = _to_result_dict(entry, ["foo"], max_lines=10, max_line_chars=200)
+        # Whole thing fits → no fetch needed → no position metadata
+        assert "snippet_start_line" not in out
+        assert "total_lines" not in out
 
 
 class TestSearch:
