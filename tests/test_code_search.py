@@ -398,7 +398,14 @@ class TestSearch:
         from ida_code.code_search import search
         r = search("open_database", kind="library", max_results=3, include_docs=False)
         assert r["results"], "expected library hits for open_database"
-        assert all(hit["kind"] == "library" for hit in r["results"])
+        # When the caller filters to a single kind, the redundant `kind`
+        # field is omitted from each result. We verify the filter worked
+        # by checking the source file is a library path.
+        assert all("kind" not in hit for hit in r["results"])
+        assert all(
+            hit["file"].endswith(".py") and "examples" not in hit["file"]
+            for hit in r["results"]
+        )
 
     def test_imports_filter(self):
         from ida_code.code_search import search

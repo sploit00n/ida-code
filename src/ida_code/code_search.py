@@ -651,7 +651,12 @@ def search(
     scored.sort(key=lambda r: r[0], reverse=True)
     scored = scored[:max_results]
 
-    results = [_to_result_dict(s, e, terms, max_snippet_lines) for s, e in scored]
+    results = [_to_result_dict(e, terms, max_snippet_lines) for _, e in scored]
+    # When the caller restricted to a single kind, every result has the same
+    # value — drop it from each entry to save tokens.
+    if kind_filter:
+        for r in results:
+            r.pop("kind", None)
 
     out = {"query": query, "results": results}
 
@@ -665,11 +670,18 @@ def search(
     return out
 
 
-def _to_result_dict(score: float, entry: CodeEntry, terms: list[str], max_lines: int) -> dict:
-    """Build a result dict, omitting fields whose value is empty.
+def _to_result_dict(entry: CodeEntry, terms: list[str], max_lines: int) -> dict:
+    """Build a result dict, omitting fields that carry no signal.
 
-    Empty fields (``""`` or ``[]``) get dropped from the JSON to keep the
-    response compact for LLM consumers — they only carry signal when set.
+    Token-efficiency rules:
+      - empty strings/lists are dropped (level/category/summary/imports)
+      - ``score`` is sort-only, never emitted (LLMs don't use it)
+      - ``apis`` is dropped — redundant with the snippet
+      - ``title`` is dropped when it equals the file's basename
+        (un-curated examples like ``idacli.py``)
+
+    The caller may further drop ``kind`` after the fact if it filtered to a
+    single kind (every result would carry the same value).
     """
     if entry.kind == "library":
         snippet = extract_snippet(
@@ -680,27 +692,24 @@ def _to_result_dict(score: float, entry: CodeEntry, terms: list[str], max_lines:
             "title": entry.title,
             "file": entry.file,
             "snippet": snippet,
-            "score": score,
         }
 
     # kind == "example": every optional field is conditionally emitted.
     snippet = extract_snippet(entry.source, terms, max_lines=max_lines)
     out: dict = {
         "kind": "example",
-        "title": entry.title,
         "file": entry.file,
         "snippet": snippet,
-        "score": score,
     }
+    # Title: only when it adds info beyond the filename.
+    if entry.title and entry.title != Path(entry.file).name:
+        out["title"] = entry.title
     if entry.level:
         out["level"] = entry.level
     if entry.category:
         out["category"] = entry.category
     if entry.summary:
         out["summary"] = entry.summary
-    apis = entry.apis_used[:10] or entry.api_calls[:10]
-    if apis:
-        out["apis"] = apis
     filtered_imports = _filter_imports_for_display(entry.imports)
     if filtered_imports:
         out["imports"] = filtered_imports
