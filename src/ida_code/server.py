@@ -437,6 +437,67 @@ def search_code(
 
 
 @mcp.tool
+def get_source(file: str, start_line: int = 1, line_count: int = 200) -> dict:
+    """Read a slice of a Python file from the indexed corpora. No database needed.
+
+    Companion to ``search_code``. When a search result includes
+    ``snippet_start_line`` and ``total_lines`` (set when the snippet
+    doesn't cover the full source), call ``get_source`` with the same
+    ``file`` to fetch additional lines.
+
+    *file* is the relative path returned by ``search_code`` (e.g.
+    ``"idapro/__init__.py"``, ``"decompiler/vds_xrefs.py"``,
+    ``"idacli.py"``). Sandboxed to the indexed corpora only —
+    ``python/``, ``python/examples/``, ``idalib/python/``,
+    ``idalib/examples/``. Files outside these roots cannot be read.
+
+    *start_line* is 1-based (default 1).
+    *line_count* caps the number of lines returned (default 200).
+
+    Returns: ``{"file", "start_line", "end_line", "total_lines", "content"}``.
+    ``end_line`` is inclusive. ``content`` is the joined slice; empty when
+    ``start_line`` is past the end of the file.
+    """
+    from ida_code.code_search import resolve_file
+
+    abs_path = resolve_file(file)
+    if abs_path is None:
+        raise ToolError(
+            f"File not found in indexed corpora: {file!r}. "
+            "Pass a `file` from a search_code or search_docs result."
+        )
+
+    try:
+        text = abs_path.read_text(errors="replace")
+    except OSError as exc:
+        raise ToolError(f"Could not read {file!r}: {exc}")
+
+    lines = text.splitlines()
+    total = len(lines)
+
+    start_line = max(1, start_line)
+    line_count = max(0, line_count)
+    end_line = min(total, start_line + line_count - 1)
+
+    if start_line > total:
+        return {
+            "file": file,
+            "start_line": start_line,
+            "end_line": start_line - 1,
+            "total_lines": total,
+            "content": "",
+        }
+
+    return {
+        "file": file,
+        "start_line": start_line,
+        "end_line": end_line,
+        "total_lines": total,
+        "content": "\n".join(lines[start_line - 1 : end_line]),
+    }
+
+
+@mcp.tool
 async def list_snapshots() -> dict:
     """List all database snapshots. Requires an open database.
 

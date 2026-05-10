@@ -47,7 +47,7 @@ For other MCP clients, run the server directly:
 IDA_INSTALL_DIR=/opt/ida-pro-9.3 ida-code   # stdio transport
 ```
 
-## Tools (35)
+## Tools (36)
 
 Full parameter docs live in each tool's docstring — surfaced automatically to MCP clients via `tools/list`.
 
@@ -61,7 +61,7 @@ Full parameter docs live in each tool's docstring — surfaced automatically to 
 | Snapshots | `list_snapshots`, `create_snapshot`, `restore_snapshot`, `delete_snapshot` |
 | Undo/redo | `get_undo_status`, `perform_undo`, `perform_redo` |
 | Inventory | `get_strings`, `get_imports`, `get_exports` |
-| Search | `search_docs`, `search_code` |
+| Search | `search_docs`, `search_code`, `get_source` |
 
 ## Resources & prompts
 

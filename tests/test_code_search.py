@@ -493,6 +493,31 @@ class TestResultPositionMetadata:
         assert "total_lines" not in out
 
 
+class TestResolveFile:
+    """``resolve_file`` is the sandboxing primitive behind ``get_source``.
+    It maps a result-side ``file`` string to its abs path on disk; unknown
+    paths return None so arbitrary file reads can't escape the corpora."""
+
+    def test_known_file_resolves(self):
+        from ida_code.code_search import resolve_file
+        # idapro/__init__.py is in the indexed library corpus
+        p = resolve_file("idapro/__init__.py")
+        assert p is not None
+        assert p.is_file()
+        assert p.name == "__init__.py"
+
+    def test_unknown_file_returns_none(self):
+        from ida_code.code_search import resolve_file
+        assert resolve_file("not_in_corpus.py") is None
+
+    def test_path_traversal_returns_none(self):
+        """A ``../etc/passwd``-style escape attempt isn't in the index, so
+        resolve_file returns None and the caller (get_source) raises."""
+        from ida_code.code_search import resolve_file
+        assert resolve_file("../../../etc/passwd") is None
+        assert resolve_file("/etc/passwd") is None
+
+
 class TestSearch:
     """Tests against the live index — confirms kind/imports filters and the
     cross-link to docs work end-to-end (skips if idalib isn't available)."""

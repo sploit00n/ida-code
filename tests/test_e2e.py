@@ -97,3 +97,45 @@ def test_open_call_and_close_via_in_process_client(target):
     # 16KB binary opens cold in ~2s standalone. Anything near 30s = dispatch
     # is broken, not just slow.
     assert elapsed < 15, f"open took {elapsed:.1f}s — possible thread regression"
+
+
+async def _search_then_get_source():
+    async with Client(FastMCPTransport(mcp)) as client:
+        # 1. search_code points us at a library def with file + offset.
+        r = await asyncio.wait_for(
+            client.call_tool("search_code", {
+                "query": "open_database", "kind": "library", "max_results": 1,
+                "max_snippet_lines": 5, "include_docs": False,
+            }),
+            timeout=10,
+        )
+        d = r.data if hasattr(r, "data") else r
+        assert d["results"], "expected at least one library hit"
+        hit = d["results"][0]
+        assert hit["file"] == "idapro/__init__.py"
+        assert "snippet_start_line" in hit
+        assert "total_lines" in hit
+
+        # 2. get_source fetches more lines starting where the snippet began.
+        r = await asyncio.wait_for(
+            client.call_tool("get_source", {
+                "file": hit["file"],
+                "start_line": hit["snippet_start_line"],
+                "line_count": 20,
+            }),
+            timeout=5,
+        )
+        src = r.data if hasattr(r, "data") else r
+        assert src["file"] == hit["file"]
+        assert src["start_line"] == hit["snippet_start_line"]
+        assert src["total_lines"] == hit["total_lines"]
+        assert "def open_database" in src["content"]
+
+
+def test_search_code_to_get_source_chain():
+    """Verify the search_code → get_source workflow end-to-end through MCP.
+
+    LLM workflow: search → see truncated snippet + offset → fetch full
+    content via get_source. Both tools are sandboxed to indexed corpora.
+    """
+    asyncio.run(_search_then_get_source())

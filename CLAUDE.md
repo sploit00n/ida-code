@@ -45,7 +45,7 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 - `comments.py` — comment get/set/delete (regular, repeatable, function, anterior, posterior)
 - `structures.py` — struct/union list/get/create/edit/delete via `ida_typeinf` + `idc.parse_decls`
 - `variables.py` — variable get/set (local via `ida_hexrays`, global via `ida_name` + `ida_typeinf`)
-- `server.py` — FastMCP server with 35 tools, 3 resources, and 2 prompts
+- `server.py` — FastMCP server with 36 tools, 3 resources, and 2 prompts
 
 `__init__.py` imports `session` first; `idapro` itself is imported lazily on the ida-thread when an idalib call is first made.
 

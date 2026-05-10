@@ -423,6 +423,21 @@ def _index_library_file(path: Path, display_name: str, entries: list[CodeEntry])
 # ---------------------------------------------------------------------------
 
 
+def resolve_file(file: str) -> Path | None:
+    """Return the absolute path of an indexed file, or ``None`` if unknown.
+
+    Used by ``get_source`` for sandboxed reads — only files that ``search_code``
+    can return are reachable. Multiple entries may share a ``file`` (e.g. 50
+    chunks from ``ida_funcs.py`` all map to the same source); this returns
+    the first match's ``abs_path``.
+    """
+    _ensure_index()
+    for entry in _index or []:
+        if entry.file == file:
+            return Path(entry.abs_path)
+    return None
+
+
 def _ensure_index() -> None:
     global _index
     if _index is not None:
