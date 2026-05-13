@@ -91,9 +91,15 @@ return structured data, handle errors, and are faster to use.
 - **Use `execute` for custom analysis** — The `execute` tool gives you full \
 IDAPython access. Write custom scripts for pattern matching, data extraction, \
 or anything the dedicated tools don't cover.
-- **Search docs and examples** — Use `search_docs` to look up unfamiliar IDA \
-APIs. Use `search_examples` to find working IDAPython code patterns — it indexes \
-125 official examples with metadata, API usage, and source code.
+- **Search docs and code** — Use `search_docs` for IDA HTML documentation. \
+Use `search_code` to find Python source — library API definitions and \
+working example scripts in one query. Library entries show `def` signatures \
++ docstrings; example entries cover the in-IDA `python/examples` and the \
+standalone-idalib `idalib/examples` corpora. For "everything about func X", \
+a single `search_code("X")` call returns the API definition, example uses, \
+and cross-linked HTML docs. When a snippet is truncated, the result carries \
+`snippet_start_line` + `total_lines`; pass the same `file` to `get_source` \
+to fetch additional lines (sandboxed to the indexed corpora).
 - **Snapshot before bulk changes** — Call `create_snapshot` before renaming or \
 retyping many symbols. Use `restore_snapshot` to roll back if something goes wrong.
 - **Work incrementally** — Rename and retype a few variables, re-decompile, \
@@ -146,7 +152,11 @@ segment membership with `ida_segment.getseg(ea)` before accessing data.
 the final script.
 - The execution namespace persists — define helpers in one call and use \
 them in the next.
-- Use `search_docs` and `search_examples` to find API patterns.
+- Use `search_docs` for IDA HTML documentation. Use `search_code` for \
+Python source (API definitions + examples); set `docstring_only=True` \
+when searching by intent ("function that opens a database") rather than \
+identifier name. When a snippet is truncated, follow up with `get_source` \
+to fetch the rest from the same `file`.
 """
 
 
