@@ -61,7 +61,7 @@ def _ensure_indexes():
 def search(
     query: str,
     max_results: int = 5,
-    max_snippet_length: int = 150,
+    max_snippet_words: int = 25,
     include_examples: bool = True,
 ) -> dict:
     """Search IDA HTML documentation. Returns a structured dict.
@@ -83,7 +83,7 @@ def search(
     for title, text, location in _html_docs:
         score = _score(terms, title, text)
         if score > 0:
-            snippet = _excerpt(text, terms, max_len=max_snippet_length)
+            snippet = _excerpt(text, terms, max_words=max_snippet_words)
             results.append((score, title, snippet, f"docs: {location}"))
 
     results.sort(key=lambda r: r[0], reverse=True)
@@ -138,31 +138,52 @@ def _score(terms: list[str], title: str, text: str) -> float:
     return total
 
 
-def _excerpt(text: str, terms: list[str], max_len: int = 300) -> str:
-    """Extract a snippet of *text* around the first matching term."""
+def _excerpt(text: str, terms: list[str], max_words: int = 25) -> str:
+    """Extract a word-bounded snippet of *text* around the first matching term.
+
+    Words are tokens produced by ``str.split()`` (whitespace-separated).
+    The snippet is at most ``max_words`` words plus optional ``"..."``
+    ellipses on each side when the window doesn't cover the whole text.
+    Cutting on word boundaries avoids mid-word truncation that char-based
+    capping produces, and the unit aligns more closely with token cost
+    than character count does.
+    """
     if not text:
         return ""
 
+    words = text.split()
+    if not words:
+        return ""
+
     lowered = text.lower()
-    best_pos = -1
+    best_char = -1
     for term in terms:
         pos = lowered.find(term)
-        if pos != -1 and (best_pos == -1 or pos < best_pos):
-            best_pos = pos
+        if pos != -1 and (best_char == -1 or pos < best_char):
+            best_char = pos
 
-    if best_pos == -1:
-        snippet = text[:max_len]
-    else:
-        half = max_len // 2
-        start = max(0, best_pos - half)
-        end = min(len(text), start + max_len)
-        if end - start < max_len:
-            start = max(0, end - max_len)
-        snippet = text[start:end]
-        if start > 0:
-            snippet = "..." + snippet
-        if end < len(text):
-            snippet = snippet + "..."
+    # Locate which word index the best-match character lands in.
+    match_word_idx = 0
+    if best_char != -1:
+        # Re-tokenise on the same boundaries: walk words, tracking the
+        # original text offset by re-finding each word from the cursor.
+        cursor = 0
+        for i, w in enumerate(words):
+            cursor = text.find(w, cursor)
+            if cursor == -1 or cursor > best_char:
+                break
+            match_word_idx = i
+            cursor += len(w)
 
-    # Collapse whitespace for readability.
-    return " ".join(snippet.split())
+    half = max_words // 2
+    start = max(0, match_word_idx - half)
+    end = min(len(words), start + max_words)
+    if end - start < max_words:
+        start = max(0, end - max_words)
+
+    snippet = " ".join(words[start:end])
+    if start > 0:
+        snippet = "..." + snippet
+    if end < len(words):
+        snippet = snippet + "..."
+    return snippet

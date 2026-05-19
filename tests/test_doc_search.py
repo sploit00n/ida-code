@@ -82,33 +82,38 @@ class TestScore:
 
 class TestExcerpt:
     def test_short_text_returned_fully(self):
-        result = _excerpt("hello world", ["hello"], max_len=300)
+        result = _excerpt("hello world", ["hello"], max_words=10)
         assert "hello world" in result
 
     def test_excerpt_around_match(self):
-        text = "A" * 200 + " TARGET " + "B" * 200
-        result = _excerpt(text, ["target"], max_len=100)
+        text = " ".join(["before"] * 30 + ["TARGET"] + ["after"] * 30)
+        result = _excerpt(text, ["target"], max_words=10)
         assert "TARGET" in result
-        assert len(result) < 200  # much shorter than original
+        assert len(result.split()) <= 11  # 10 words + maybe ellipsis tokens
 
     def test_ellipsis_at_start(self):
-        text = "A" * 200 + "match" + "B" * 200
-        result = _excerpt(text, ["match"], max_len=100)
+        text = " ".join(["before"] * 50 + ["MATCH"] + ["after"] * 50)
+        result = _excerpt(text, ["match"], max_words=5)
         assert result.startswith("...")
 
     def test_ellipsis_at_end(self):
-        text = "A" * 200 + "match" + "B" * 200
-        result = _excerpt(text, ["match"], max_len=100)
+        text = " ".join(["before"] * 50 + ["MATCH"] + ["after"] * 50)
+        result = _excerpt(text, ["match"], max_words=5)
         assert result.endswith("...")
 
     def test_no_match_returns_beginning(self):
         text = "start of text and more"
-        result = _excerpt(text, ["nonexistent"], max_len=300)
+        result = _excerpt(text, ["nonexistent"], max_words=50)
         assert "start" in result
 
-    def test_whitespace_collapsed(self):
-        result = _excerpt("foo   \n\n   bar", ["foo"], max_len=300)
-        assert "  " not in result
+    def test_word_boundary_no_midword_cut(self):
+        """Truncation lands on whole words, never mid-word."""
+        text = " ".join(["alphabet"] * 100)
+        result = _excerpt(text, ["alphabet"], max_words=5)
+        # Strip ellipses, every remaining word should be the full "alphabet"
+        body = result.replace("...", "").strip()
+        for word in body.split():
+            assert word == "alphabet", f"got partial word: {word!r}"
 
 
 class TestSearchCrossLinking:

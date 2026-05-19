@@ -725,7 +725,7 @@ def search(
 
     if include_docs:
         from ida_code.doc_search import search as _search_docs
-        doc_res = _search_docs(query, max_results=2, max_snippet_length=200, include_examples=False)
+        doc_res = _search_docs(query, max_results=2, max_snippet_words=30, include_examples=False)
         if doc_res.get("results"):
             out["related_docs"] = doc_res["results"]
 

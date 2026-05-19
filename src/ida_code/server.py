@@ -36,7 +36,14 @@ mcp = FastMCP(
         "annotate code, and run IDAPython scripts.\n\n"
         "Typical workflow: open_database → list_functions → decompile → "
         "annotate (rename_function, set_comment, set_variable) → iterate.\n\n"
-        "Only one database can be open at a time. Most tools require an open database."
+        "Only one database can be open at a time. Most tools require an open database.\n\n"
+        "Discovery: `guidelines://standalone_script`, `guidelines://plugin`, and "
+        "`guidelines://idapython_script` resources hold code templates and Hex-Rays "
+        "coding conventions — read whichever matches your task before writing. The "
+        "`reverse_engineer` and `create_script` prompts walk through full workflows. "
+        "For Python API signatures, idapro module, or example scripts use `search_code` "
+        "(then `get_source` to fetch more lines from any file it returns); "
+        "`search_docs` is HTML prose only (user-guide, developer-guide)."
     ),
 )
 
@@ -85,6 +92,11 @@ async def open_database(
     *arch* selects a specific architecture slice from a fat (universal) Mach-O
     binary (e.g. "arm64e", "x86_64"). Use list_architectures to discover
     available slices. Ignored for non-fat binaries.
+
+    Writing a standalone idalib script that calls this? First call
+    ``get_guideline("standalone_script")`` for the bootstrap template
+    (sys.path / IDADIR setup) and Hex-Rays coding conventions — those aren't
+    in this docstring.
     """
     open_path, original_path = session._prepare_open(path, arch, overwrite)
     return await on_ida_thread(
@@ -337,30 +349,32 @@ async def list_functions(offset: int = 0, limit: int = 50, name_filter: str = ""
     return await on_ida_thread(_impl)
 
 
+GuidelineTarget = Literal["standalone_script", "plugin", "idapython_script"]
+
+
 @mcp.tool
-def search_docs(
-    query: str,
-    max_results: int = 5,
-    max_snippet_length: int = 150,
-    include_examples: bool = True,
-) -> dict:
-    """Look up IDA HTML documentation. No database needs to be open.
+def get_guideline(target: GuidelineTarget) -> str:
+    """Return the coding guideline for an IDA script type. No database needed.
 
-    Use this to find prose explanations, user-guide / developer-guide
-    chapters, and conceptual context.
+    Read this BEFORE writing any IDA Python code. Covers the bootstrap
+    template, key constraints (import order, single-thread, single-database),
+    Hex-Rays coding conventions (avoid `idc.py`/`idaapi`/`from X import Y`,
+    double-quote strings), and the search_code / search_docs / get_source
+    workflow for finding APIs and examples.
 
-    For Python source — library API signatures (``ida_*.py``, ``idapro``)
-    and example scripts — use ``search_code`` instead.
+    Targets:
+      - ``standalone_script`` — uses idalib outside IDA. sys.path setup,
+        ``import idapro`` first, ``open_database`` / ``close_database``.
+      - ``plugin`` — IDA plugin loaded inside the GUI. Subclass of
+        ``idaapi.plugin_t``, ``PLUGIN_ENTRY`` factory, hooks, actions.
+      - ``idapython_script`` — classic IDAPython script run via File >
+        Script File or the Python console. No bootstrap needed.
 
-    Uses word-boundary matching: "set" matches "set_name" but not "reset".
-
-    When *include_examples* is True (default), also returns up to 2 matching
-    example scripts in the ``related_examples`` key (cross-linked from
-    ``search_code`` with ``kind="example"``).
-
-    *max_snippet_length* caps each snippet (default 150 chars).
+    Identical content is also available as the MCP resource
+    ``guidelines://<target>``; the tool form is offered because tool listings
+    are read more reliably than resource listings by most MCP clients.
     """
-    return _search_docs(query, max_results, max_snippet_length, include_examples)
+    return _guidelines.get(target)
 
 
 CodeKind = Literal["library", "example", ""]
@@ -379,7 +393,12 @@ def search_code(
     max_snippet_line_chars: int = 200,
     include_docs: bool = True,
 ) -> dict:
-    """Find Python source — library APIs and/or example scripts. No database needs to be open.
+    """Find Python source — API signatures, idapro module, and example scripts.
+
+    **Primary tool for "what's the signature of X?" or "show me code that does Y"**
+    queries — covers `ida_*.py`, `idautils.py`, `idc.py`, the standalone idalib
+    `idapro` package, plus all in-IDA and idalib example scripts. No database
+    needs to be open.
 
     Unified search over:
 
@@ -434,6 +453,35 @@ def search_code(
         max_snippet_line_chars=max_snippet_line_chars,
         include_docs=include_docs,
     )
+
+
+@mcp.tool
+def search_docs(
+    query: str,
+    max_results: int = 5,
+    max_snippet_words: int = 25,
+    include_examples: bool = True,
+) -> dict:
+    """Look up IDA *HTML prose* documentation (user-guide / developer-guide).
+
+    **For Python API signatures, idapro module, or example scripts, use
+    `search_code` instead** — this tool only indexes the HTML docs, not
+    Python source. No database needs to be open.
+
+    Use this for conceptual context and chapter-style explanations:
+    "what is auto-analysis", "how does the structure editor work", etc.
+
+    Uses word-boundary matching: "set" matches "set_name" but not "reset".
+
+    When *include_examples* is True (default), also returns up to 2 matching
+    example scripts in the ``related_examples`` key (cross-linked from
+    ``search_code`` with ``kind="example"``).
+
+    *max_snippet_words* caps each snippet at this many whitespace-separated
+    words (default 25). Word-based cap avoids mid-word truncation and aligns
+    more closely with LLM token cost than character cap.
+    """
+    return _search_docs(query, max_results, max_snippet_words, include_examples)
 
 
 @mcp.tool

@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **`get_guideline` tool** — tool-form companion to the `guidelines://*` resources. Same content, but tool listings are read more reliably than resource listings by cold LLM clients.
+
+### Changed
+
+- `search_docs` snippet cap is word-based (`max_snippet_length` → `max_snippet_words`, default 25). Avoids mid-word truncation and lines up better with token cost.
+- `search_docs` / `search_code` docstrings and the server `instructions` paragraph rewritten as discovery steers — `search_code` for API lookups, `search_docs` narrowed to HTML prose, both pointing at `get_guideline` / `get_source`.
+
 ## [0.2.3] - 2026-05-10
 
 ### Added
