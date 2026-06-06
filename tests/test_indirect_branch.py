@@ -303,6 +303,17 @@ def test_microcode_enrichment_known_site(alf_db):
         f"expected _rslog_flush_func candidate; got {names}"
 
 
+def test_pac_discriminator_known_site(alf_db):
+    """Pass 3 (arm64e helper): BLRAA at 0x8e9c carries discriminator 0x2ABE
+    in X17, set at 0x8e98."""
+    r = _on_ida(ib_api.get_indirect_branch, f"{KNOWN_SITE:#x}")
+    disc = r.get("discriminator")
+    assert disc is not None, f"expected discriminator on BLRAA site; got {r}"
+    assert (disc.get("register") or "").lower() == "x17"
+    assert (disc.get("value") or "").lower() == "0x2abe"
+    assert disc.get("source_addr") == "0x8e98"
+
+
 def test_set_unresolvable_round_trip(alf_db):
     site = 0xA264
     rec = _on_ida(

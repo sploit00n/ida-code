@@ -11,7 +11,7 @@ import logging
 from fastmcp.exceptions import ToolError
 
 from ida_code import session
-from ida_code.indirect_branch import microcode, persist, scan
+from ida_code.indirect_branch import arch, microcode, persist, scan
 
 log = logging.getLogger(__name__)
 
@@ -90,6 +90,11 @@ def get_indirect_branch(addr: str) -> dict:
     # inferred type, caller-arg candidates). Silently absent if Hex-Rays
     # isn't available or microcode generation fails.
     result.update(microcode.enrich_with_microcode(ea))
+
+    # Pass 3: arch-specific evidence (arm64e PAC discriminator, etc.).
+    disc = arch.get_helper().pac_discriminator(ea)
+    if disc is not None:
+        result["discriminator"] = disc
 
     return result
 
