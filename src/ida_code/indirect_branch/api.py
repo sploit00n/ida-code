@@ -11,7 +11,7 @@ import logging
 from fastmcp.exceptions import ToolError
 
 from ida_code import session
-from ida_code.indirect_branch import persist, scan
+from ida_code.indirect_branch import microcode, persist, scan
 
 log = logging.getLogger(__name__)
 
@@ -78,13 +78,20 @@ def get_indirect_branch(addr: str) -> dict:
     func = ida_funcs.get_func(ea)
     func_name = ida_funcs.get_func_name(func.start_ea) if func else None
 
-    return {
+    result = {
         "addr": f"{ea:#x}",
         "kind": kind,
         "containing_function": func_name,
         "containing_function_addr": f"{func.start_ea:#x}" if func else None,
         "existing_resolution": _read_resolution(ea),
     }
+
+    # Pass 2: microcode-derived fields (target backward slice, from_arg,
+    # inferred type, caller-arg candidates). Silently absent if Hex-Rays
+    # isn't available or microcode generation fails.
+    result.update(microcode.enrich_with_microcode(ea))
+
+    return result
 
 
 def set_indirect_branch(

@@ -276,6 +276,33 @@ def test_list_status_filter_after_resolve(alf_db):
     assert f"{KNOWN_SITE:#x}" in any_addrs
 
 
+def test_microcode_enrichment_known_site(alf_db):
+    """Pass 2: get_indirect_branch surfaces target slice, from_arg, prototype,
+    and at least one caller-arg candidate for the known BLRAA site."""
+    r = _on_ida(ib_api.get_indirect_branch, f"{KNOWN_SITE:#x}")
+
+    # Target operand kind — x19 is a register.
+    assert r.get("target_microcode_op") == "mop_r"
+
+    # Backward slice should record at least the MOV x19, x0 def.
+    slice_defs = r.get("target_backward_slice", [])
+    assert any("x0" in (d.get("op_source") or "") for d in slice_defs), \
+        f"expected def from x0 in slice; got {slice_defs}"
+
+    # The callback is the function's first argument.
+    assert r.get("from_arg") == 0, f"expected from_arg=0; got {r.get('from_arg')}"
+
+    # Prototype should look like a pointer-to-function returning __int64.
+    assert "*" in (r.get("inferred_type") or "")
+
+    # Callers _rslog_flush_all and _rslog_timer_handler both pass &_rslog_flush_func.
+    candidates = r.get("candidates", [])
+    assert candidates, "expected at least one caller-arg candidate"
+    names = [c.get("target_name") for c in candidates]
+    assert any(n and "rslog_flush_func" in n for n in names), \
+        f"expected _rslog_flush_func candidate; got {names}"
+
+
 def test_set_unresolvable_round_trip(alf_db):
     site = 0xA264
     rec = _on_ida(

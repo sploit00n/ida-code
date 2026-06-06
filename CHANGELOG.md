@@ -8,7 +8,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **Indirect-branch tools (Pass 1)** — `list_indirect_branches`, `get_indirect_branch`, `set_indirect_branch`. Enumerate indirect call/jump sites via IDA's CFG (`ida_idp.is_call_insn`, basic-block `fcb_indjump`), then record per-target resolutions as manual code xrefs plus an `@RESOLVED_V1` block in the site's comment. Persistence rides on the `.i64`; resolved targets show up through the existing `get_xrefs_from` tool. Pass 2 will add microcode-based backward slicing and candidate generation; Pass 3 adds arch-specific helpers (arm64e PAC discriminator first).
+- **Indirect-branch tools (Pass 1)** — `list_indirect_branches`, `get_indirect_branch`, `set_indirect_branch`. Enumerate indirect call/jump sites via IDA's CFG (`ida_idp.is_call_insn`, basic-block `fcb_indjump`), then record per-target resolutions as manual code xrefs plus an `@RESOLVED_V1` block in the site's comment. Persistence rides on the `.i64`; resolved targets show up through the existing `get_xrefs_from` tool.
+- **Indirect-branch microcode heuristics (Pass 2)** — `get_indirect_branch` now also returns `target_microcode_op`, `target_backward_slice`, `from_arg`, `inferred_type`, and `candidates`. Backward slice walks Hex-Rays microcode at `MMAT_GLBOPT3` def-use chains; arg-index inference matches the source operand's mreg against the function's prototype via `reg2mreg`; caller-arg candidate generation walks callers and inspects the relevant arg slot in each. All arch-agnostic — Hex-Rays handles the PCS mapping. Pass 3 will add arch-specific helpers (arm64e PAC discriminator first).
 
 ## [0.2.4] - 2026-05-19
 
