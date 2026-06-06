@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Indirect-branch tools (Pass 1)** — `list_indirect_branches`, `get_indirect_branch`, `set_indirect_branch`. Enumerate indirect call/jump sites via IDA's CFG (`ida_idp.is_call_insn`, basic-block `fcb_indjump`), then record per-target resolutions as manual code xrefs plus an `@RESOLVED_V1` block in the site's comment. Persistence rides on the `.i64`; resolved targets show up through the existing `get_xrefs_from` tool. Pass 2 will add microcode-based backward slicing and candidate generation; Pass 3 adds arch-specific helpers (arm64e PAC discriminator first).
+
 ## [0.2.4] - 2026-05-19
 
 ### Added

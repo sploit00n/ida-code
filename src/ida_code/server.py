@@ -18,6 +18,7 @@ from ida_code.doc_search import search as _search_docs
 from ida_code.code_search import search as _search_code
 from ida_code.ida_thread import on_ida_thread
 from ida_code import comments as _comments
+from ida_code import indirect_branch as _indirect_branch
 from ida_code import snapshots as _snapshots
 from ida_code import structures as _structures
 from ida_code import undo as _undo
@@ -993,6 +994,71 @@ async def get_xrefs_from(address: str, max_results: int = 100) -> dict:
             "truncated": truncated,
         }
     return await on_ida_thread(_impl)
+
+
+IndirectBranchStatus = Literal["any", "resolved", "unresolved"]
+
+
+@mcp.tool
+async def list_indirect_branches(
+    function: str | None = None,
+    status: IndirectBranchStatus = "unresolved",
+) -> dict:
+    """List indirect-branch sites (calls/jumps via register) with a digest.
+
+    Requires an open database. Use this to triage which branches need
+    LLM resolution; then call ``get_indirect_branch`` on individual
+    sites for details, and ``set_indirect_branch`` to record your
+    judgment.
+
+    *function* — restrict to one function (name or hex address). None = whole db.
+    *status*   — ``unresolved`` (default), ``resolved``, or ``any``.
+
+    Returns: ``{"scope", "status", "count", "sites": [{"addr", "kind",
+    "containing_function", "has_resolution", "num_targets"}]}``.
+    """
+    return await on_ida_thread(lambda: _indirect_branch.list_indirect_branches(function, status))
+
+
+@mcp.tool
+async def get_indirect_branch(addr: str) -> dict:
+    """Get what we know about a single indirect-branch site. Requires an open database.
+
+    *addr* — name or hex address of the branch instruction.
+
+    Returns at minimum: ``{"addr", "kind": "call"|"jmp",
+    "containing_function", "existing_resolution"}``. Later passes add
+    backward-slice, candidates, and arm64e PAC discriminator fields.
+
+    ``existing_resolution`` is the parsed ``@RESOLVED_V1`` block from
+    the site's comment (or null if not yet resolved).
+    """
+    return await on_ida_thread(lambda: _indirect_branch.get_indirect_branch(addr))
+
+
+@mcp.tool
+async def set_indirect_branch(
+    addr: str,
+    targets: list[dict] | None = None,
+    unresolvable_reason: str = "",
+) -> dict:
+    """Record your resolution for an indirect-branch site. Requires an open database.
+
+    Either pass non-empty *targets* — list of ``{"addr", "confidence",
+    "reason"}`` per-target dicts with confidence in
+    ``{"certain", "likely", "speculative"}`` — OR pass a non-empty
+    *unresolvable_reason* to mark the site as a dead-end.
+
+    Persists in the .i64 via two mechanisms:
+      - One manual code xref per target (visible to ``get_xrefs_from``).
+      - An ``@RESOLVED_V1`` block in the site's regular comment.
+
+    Returns: ``{"addr", "status", "targets_recorded", "xrefs_added",
+    "unresolvable"}``.
+    """
+    return await on_ida_thread(
+        lambda: _indirect_branch.set_indirect_branch(addr, targets, unresolvable_reason)
+    )
 
 
 @mcp.tool

@@ -45,7 +45,8 @@ HTTP/SSE modes require bearer token auth. Set `MCP_AUTH_TOKEN` env var or let th
 - `comments.py` — comment get/set/delete (regular, repeatable, function, anterior, posterior)
 - `structures.py` — struct/union list/get/create/edit/delete via `ida_typeinf` + `idc.parse_decls`
 - `variables.py` — variable get/set (local via `ida_hexrays`, global via `ida_name` + `ida_typeinf`)
-- `server.py` — FastMCP server with 37 tools, 3 resources, and 2 prompts
+- `indirect_branch/` — indirect-branch site enumeration + LLM resolution recording. `scan.py` finds sites via `ida_idp.is_call_insn` + basic-block `fcb_indjump` (no disasm or microcode). `persist.py` formats the `@RESOLVED_V1` comment block and manages manual code xrefs. `api.py` wires the three MCP tools. Designed for three additive passes — Pass 1 (CFG only, this commit), Pass 2 (microcode heuristics), Pass 3 (arch helpers under `arch/`).
+- `server.py` — FastMCP server with 40 tools, 3 resources, and 2 prompts
 
 `__init__.py` imports `session` first; `idapro` itself is imported lazily on the ida-thread when an idalib call is first made.
 
