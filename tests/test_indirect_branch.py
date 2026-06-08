@@ -188,8 +188,21 @@ def _kdk_alf_path() -> Path | None:
     for p in candidates:
         if p.is_file():
             return p
-    # Allow env-var override for other systems.
     env = os.environ.get("ALF_KEXT")
+    if env and Path(env).is_file():
+        return Path(env)
+    return None
+
+
+def _kdk_usb_path() -> Path | None:
+    """Find AppleEmbeddedUSB.kext arm64 slice binary, or None."""
+    candidates = [
+        Path("/home/user/research/mac-crash/updates/kdk/26.3_25D5087f/Extensions/AppleEmbeddedUSB.kext/Contents/MacOS/AppleEmbeddedUSB"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    env = os.environ.get("USB_KEXT")
     if env and Path(env).is_file():
         return Path(env)
     return None
@@ -204,6 +217,29 @@ def alf_db(tmp_path):
     if src is None:
         pytest.skip("ALF.kext not found (set ALF_KEXT env var to override)")
     dst = tmp_path / "ALF"
+    shutil.copy(src, dst)
+
+    from ida_code import session as _s
+    if _s.get_state() == _s.State.DATABASE_OPEN:
+        _s.close()
+    _s.open(str(dst), auto_analysis=True, arch="arm64")
+    yield dst
+    if _s.get_state() == _s.State.DATABASE_OPEN:
+        try:
+            _s.close()
+        except Exception:
+            pass
+
+
+@pytest.fixture
+def usb_db(tmp_path):
+    """Copy AppleEmbeddedUSB.kext to tmp_path and open as arm64. Skip if absent."""
+    if not _HAVE_IDALIB:
+        pytest.skip("idalib not available")
+    src = _kdk_usb_path()
+    if src is None:
+        pytest.skip("AppleEmbeddedUSB.kext not found (set USB_KEXT to override)")
+    dst = tmp_path / "AppleEmbeddedUSB"
     shutil.copy(src, dst)
 
     from ida_code import session as _s
@@ -312,6 +348,59 @@ def test_pac_discriminator_known_site(alf_db):
     assert (disc.get("register") or "").lower() == "x17"
     assert (disc.get("value") or "").lower() == "0x2abe"
     assert disc.get("source_addr") == "0x8e98"
+
+
+USB_VTABLE_SITE = 0x431C  # BLRAA X8, X17 — virtual call in __ZN11AppleUSBPhy5startEP9IOService
+
+
+def test_auth_stubs_filtered_from_listing(usb_db):
+    """Pass 4 #1: list_indirect_branches must NOT enumerate sites inside __auth_stubs."""
+    def _check():
+        from ida_code.indirect_branch import api as ib
+        import ida_segment
+        seg = ida_segment.get_segm_by_name("__auth_stubs")
+        assert seg is not None
+        result = ib.list_indirect_branches(status="any")
+        for s in result["sites"]:
+            ea = int(s["addr"], 16)
+            assert not (seg.start_ea <= ea < seg.end_ea), \
+                f"site {s['addr']} ({s['kind']}) is inside __auth_stubs"
+    _on_ida(_check)
+
+
+def test_microcode_fuzzy_ea_match_after_pac_normalization(usb_db):
+    """Pass 4 #2: get_indirect_branch on the raw BLRAA EA still surfaces microcode
+    enrichment even when Hex-Rays moves the m_icall's reported EA."""
+    r = _on_ida(ib_api.get_indirect_branch, f"{USB_VTABLE_SITE:#x}")
+    assert r.get("target_microcode_op"), \
+        f"expected microcode enrichment via fuzzy match; got {r}"
+
+
+def test_vtable_candidate_from_microcode(usb_db):
+    """Pass 4 #3: when the target operand reads through a __ZTV* global,
+    emit a vtable candidate without needing caller analysis."""
+    r = _on_ida(ib_api.get_indirect_branch, f"{USB_VTABLE_SITE:#x}")
+    candidates = r.get("candidates", [])
+    vt = [c for c in candidates if c.get("source") == "vtable"]
+    assert vt, f"expected vtable candidate; got {candidates}"
+    assert vt[0].get("vtable", "").startswith("__ZTV"), vt[0]
+    assert vt[0].get("offset", "").startswith("0x"), vt[0]
+
+
+def test_pac_discriminator_movk_pattern(usb_db):
+    """Pass 4 #4: vtable PAC pattern is MOV X17, X9 ; MOVK X17, #imm,LSL#48 — the
+    discriminator helper should emit value with the MOVK constant in the high bits
+    and a value_mask indicating only those bits are known."""
+    r = _on_ida(ib_api.get_indirect_branch, f"{USB_VTABLE_SITE:#x}")
+    disc = r.get("discriminator")
+    assert disc is not None, r
+    assert disc.get("kind") == "movk", disc
+    # High 16 bits should be set in the mask.
+    mask = int(disc["value_mask"], 16)
+    assert mask & 0xFFFF000000000000, f"expected high-16 bits set; mask={disc['value_mask']}"
+    # The MOVK constant we saw in the probe was 0x3C68.
+    value = int(disc["value"], 16)
+    assert ((value >> 48) & 0xFFFF) == 0x3C68, f"expected 0x3C68 in top 16; value={disc['value']}"
 
 
 def test_set_unresolvable_round_trip(alf_db):

@@ -27,8 +27,25 @@ _BACKWARD_SCAN_INSNS = 32  # generous cap; the constant is usually within 4
 
 
 def pac_discriminator(ea: int) -> dict | None:
-    """Return ``{"register", "value", "source_addr"}`` for the discriminator
-    of the PAC-signed branch at *ea*, or None if not applicable.
+    """Return discriminator evidence for the PAC-signed branch at *ea*.
+
+    Response shape::
+
+      {
+        "register": "X17",
+        "value": "0x3c68000000000000",        // best-effort 64-bit value
+        "value_mask": "0xffff000000000000",   // which bits are known (set)
+        "source_addr": "0x4318",
+        "kind": "imm" | "movk" | "dynamic" | "zero",
+      }
+
+    The Apple-Silicon vtable PAC pattern builds the discriminator across
+    multiple instructions — typically ``MOV X17, X9 ; MOVK X17, #imm,LSL#48``
+    — so the low 48 bits are dynamic and only the MOVK constant tag is
+    fixed. ``value_mask`` lets the caller distinguish fixed-bit positions
+    from "we don't know yet" bits.
+
+    Returns None if *ea* isn't a PAC-signed branch.
     """
     import ida_ua
     import idc
@@ -45,7 +62,13 @@ def pac_discriminator(ea: int) -> dict | None:
         return None
 
     if mnem.endswith("Z"):
-        return {"register": None, "value": "0x0", "source_addr": None}
+        return {
+            "register": None,
+            "value": "0x0",
+            "value_mask": "0xffffffffffffffff",
+            "source_addr": None,
+            "kind": "zero",
+        }
 
     # Operand 1 is the discriminator register on BLRAA/BLRAB/BRAA/BRAB.
     disc_op = insn.ops[1]
@@ -54,35 +77,43 @@ def pac_discriminator(ea: int) -> dict | None:
     disc_reg = disc_op.reg
 
     reg_name = _reg_name(disc_reg)
-    found = _backward_find_const_assignment(ea, disc_reg)
-    if found is None:
-        return {"register": reg_name, "value": None, "source_addr": None}
-    source_ea, value = found
+    built = _build_discriminator_value(ea, disc_reg)
     return {
         "register": reg_name,
-        "value": f"{value:#x}",
-        "source_addr": f"{source_ea:#x}",
+        "value": f"{built['value']:#x}",
+        "value_mask": f"{built['mask']:#x}",
+        "source_addr": f"{built['source_ea']:#x}" if built["source_ea"] is not None else None,
+        "kind": built["kind"],
     }
 
 
 # ---------- internals ----------
 
 
-def _backward_find_const_assignment(ea: int, reg: int):
-    """Walk back within the basic block looking for ``MOV reg, #imm``."""
+def _build_discriminator_value(branch_ea: int, reg: int) -> dict:
+    """Walk back from a PAC branch and reconstruct the discriminator value.
+
+    Returns ``{value, mask, source_ea, kind}``::
+      - ``kind == "imm"``  — fully known via a single ``MOV/MOVZ reg, #imm``.
+      - ``kind == "movk"`` — known only in the bit positions set by one or
+        more ``MOVK reg, #imm, LSL #n`` instructions; the rest is dynamic.
+      - ``kind == "dynamic"`` — neither found before basic-block start.
+    """
     import ida_funcs
-    import ida_gdl
     import ida_ua
 
-    func = ida_funcs.get_func(ea)
+    func = ida_funcs.get_func(branch_ea)
     if func is None:
-        return None
-
-    bb_start = _block_start(func, ea)
+        return {"value": 0, "mask": 0, "source_ea": None, "kind": "dynamic"}
+    bb_start = _block_start(func, branch_ea)
     if bb_start is None:
-        return None
+        return {"value": 0, "mask": 0, "source_ea": None, "kind": "dynamic"}
 
-    cursor = ea - 4  # arm64 fixed instruction width
+    value = 0
+    mask = 0
+    earliest_source = None  # the most-trailing MOVK/MOV we used
+
+    cursor = branch_ea - 4
     steps = 0
     while cursor >= bb_start and steps < _BACKWARD_SCAN_INSNS:
         ins = ida_ua.insn_t()
@@ -91,21 +122,48 @@ def _backward_find_const_assignment(ea: int, reg: int):
             cursor -= 4
             steps += 1
             continue
+
         mnem = ins.get_canon_mnem().upper()
-        if mnem in _MOV_MNEMONICS:
-            if (
-                ins.ops[0].type == ida_ua.o_reg
-                and ins.ops[0].reg == reg
-                and ins.ops[1].type == ida_ua.o_imm
-            ):
-                return cursor, ins.ops[1].value
-            # MOVK/MOVZ pieces or non-immediate source — give up.
-            if ins.ops[0].type == ida_ua.o_reg and ins.ops[0].reg == reg:
-                return None
+        op0 = ins.ops[0]
+        op1 = ins.ops[1]
+
+        # Only care about defs of `reg`.
+        if op0.type != ida_ua.o_reg or op0.reg != reg:
+            cursor -= 4
+            steps += 1
+            continue
+
+        if mnem == "MOVK" and op1.type == ida_ua.o_imm:
+            # specval carries the LSL shift amount on IDA's arm proc module.
+            shift = op1.specval & 0xFF
+            mask16 = 0xFFFF << shift
+            value = (value & ~mask16) | ((op1.value & 0xFFFF) << shift)
+            mask |= mask16
+            if earliest_source is None:
+                earliest_source = cursor
+        elif mnem in _MOV_MNEMONICS and op1.type == ida_ua.o_imm:
+            # MOV/MOVZ with immediate establishes the base; we're done.
+            base_shift = (op1.specval & 0xFF) if mnem == "MOVZ" else 0
+            base_value = (op1.value & 0xFFFF) << base_shift
+            base_mask = 0xFFFFFFFFFFFFFFFF if mnem == "MOV" else (0xFFFF << base_shift)
+            # MOVKs we already saw take precedence in their bit ranges.
+            value = (value & mask) | (base_value & ~mask)
+            mask |= base_mask
+            earliest_source = cursor
+            break
+        else:
+            # Some other def of `reg` (e.g. MOV from another register).
+            # Whatever MOVKs we collected stay valid; below those bits is dynamic.
+            break
+
         cursor -= 4
         steps += 1
 
-    return None
+    if mask == 0:
+        return {"value": 0, "mask": 0, "source_ea": None, "kind": "dynamic"}
+
+    kind = "imm" if mask == 0xFFFFFFFFFFFFFFFF else "movk"
+    return {"value": value, "mask": mask, "source_ea": earliest_source, "kind": kind}
 
 
 def _block_start(func, ea: int) -> int | None:

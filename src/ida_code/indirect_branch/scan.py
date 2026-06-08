@@ -93,7 +93,10 @@ def scan_function(func_ea: int) -> list[dict]:
     """Indirect-branch sites in the function starting at *func_ea*.
 
     Returns a list of ``{ea, kind, containing_function_ea}`` dicts
-    sorted by ea.
+    sorted by ea. Includes sites in any function — auth-stub filtering
+    happens at enumeration time (``scan_all``); a direct query on an
+    auth-stub function still classifies the site so an explicit
+    ``get_indirect_branch`` lookup remains useful.
     """
     import ida_funcs
 
@@ -109,10 +112,27 @@ def scan_function(func_ea: int) -> list[dict]:
 
 
 def scan_all() -> list[dict]:
-    """Indirect-branch sites across all functions in the database."""
+    """Indirect-branch sites across all functions in the database.
+
+    Skips functions inside the ``__auth_stubs`` segment — PAC trampoline
+    thunks whose targets IDA already knows via the import table aren't
+    meaningful "indirect branches needing resolution."
+    """
     import idautils
 
     out = []
     for func_ea in idautils.Functions():
+        if _is_in_auth_stubs(func_ea):
+            continue
         out.extend(scan_function(func_ea))
     return out
+
+
+def _is_in_auth_stubs(ea: int) -> bool:
+    """True if *ea* lies in the binary's ``__auth_stubs`` segment, if any."""
+    import ida_segment
+
+    seg = ida_segment.get_segm_by_name("__auth_stubs")
+    if seg is None:
+        return False
+    return seg.start_ea <= ea < seg.end_ea

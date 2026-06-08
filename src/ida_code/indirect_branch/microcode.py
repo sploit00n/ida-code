@@ -22,9 +22,15 @@ fields remain valid on their own.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Iterable
 
 log = logging.getLogger(__name__)
+
+# Match a vtable reference + load offset in a microcode operand's dstr().
+# Example: ``[cs.2{5}:(&($__ZTV9IOService).8+#0x600.8)].8``
+# Group 1: vtable mangled name; group 2: byte offset (hex).
+_VTABLE_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)\)\.\d+\+#(0x[0-9a-fA-F]+)")
 
 
 SLICE_MAX_DEFS = 5
@@ -79,10 +85,17 @@ def enrich_with_microcode(ea: int) -> dict:
     if proto:
         out["inferred_type"] = proto
 
+    candidates: list[dict] = []
+
+    vt = _extract_vtable_candidate(target_mop)
+    if vt is not None:
+        candidates.append(vt)
+
     if arg_idx is not None:
-        candidates = _caller_arg_candidates(func.start_ea, arg_idx)
-        if candidates:
-            out["candidates"] = candidates
+        candidates.extend(_caller_arg_candidates(func.start_ea, arg_idx))
+
+    if candidates:
+        out["candidates"] = candidates
 
     return out
 
@@ -123,25 +136,46 @@ def _build_mba(func):
 # ---------- icall location ----------
 
 
+_ICALL_EA_FUZZ = 16  # 4 arm64 instructions; ample for PAC-normalization shifts
+
+
 def _locate_icall(mba, ea: int):
-    """Find the m_icall microinstruction whose EA matches *ea*.
+    """Find the m_icall microinstruction associated with the raw insn at *ea*.
+
+    Returns (block_idx, icall_minsn) or None. Strategy:
+      1. Exact EA match (the common case).
+      2. Fuzzy fallback — pick the m_icall whose `ea` is closest to the
+         query within ±_ICALL_EA_FUZZ bytes. Necessary because Hex-Rays
+         often shifts an icall's reported EA by a few instructions after
+         PAC normalization or other optimization passes (e.g. IDA 9.2
+         strips PAC and reports the icall at the EA of the last
+         discriminator-construction instruction, not the BLRAA itself).
 
     Hex-Rays often nests m_icall inside an m_mov when the return value
     is bound to a destination — we recurse through nested instructions.
-    Returns (block_idx, icall_minsn) or None.
     """
     import ida_hexrays
+
+    exact = None
+    nearest = None
+    nearest_dist = _ICALL_EA_FUZZ + 1
 
     for blk_idx in range(mba.qty):
         blk = mba.get_mblock(blk_idx)
         insn = blk.head
         while insn:
-            if insn.ea == ea:
-                icall = _find_nested_icall(insn)
-                if icall is not None:
-                    return blk_idx, icall
+            icall = _find_nested_icall(insn)
+            if icall is not None:
+                if insn.ea == ea:
+                    exact = (blk_idx, icall)
+                else:
+                    dist = abs(insn.ea - ea)
+                    if dist <= _ICALL_EA_FUZZ and dist < nearest_dist:
+                        nearest = (blk_idx, icall)
+                        nearest_dist = dist
             insn = insn.next
-    return None
+
+    return exact or nearest
 
 
 def _find_nested_icall(insn):
@@ -531,6 +565,55 @@ def _format_caller(caller_func, caller_ea: int) -> str:
 
 
 # ---------- misc ----------
+
+
+def _extract_vtable_candidate(target_mop) -> dict | None:
+    """Return a candidate dict when the icall target reads from a C++ vtable.
+
+    Recognises the Hex-Rays pattern where the target operand renders as
+    a memory load through a ``__ZTV*`` global at a constant offset.
+    We attempt to map the offset to a concrete vtable slot name via
+    ``ida_name.get_name_ea`` on ``__ZTV<class>`` plus the offset; if
+    that's unavailable we still emit the structural candidate so the
+    LLM knows which class+offset to look up.
+    """
+    try:
+        text = target_mop.dstr() if hasattr(target_mop, "dstr") else ""
+    except Exception:
+        return None
+    if not text or "__ZTV" not in text:
+        return None
+    m = _VTABLE_RE.search(text)
+    if not m:
+        return None
+    vtable_name = m.group(1)
+    offset_hex = m.group(2)
+    cand: dict = {
+        "source": "vtable",
+        "vtable": vtable_name,
+        "offset": offset_hex,
+    }
+
+    # Try to resolve the slot to a concrete function name.
+    import ida_bytes
+    import ida_name
+
+    vt_ea = ida_name.get_name_ea(0xFFFFFFFFFFFFFFFF, vtable_name)
+    if vt_ea != 0xFFFFFFFFFFFFFFFF:
+        try:
+            offset = int(offset_hex, 16)
+            slot_ea = ida_bytes.get_qword(vt_ea + offset)
+            # arm64e signed pointers: top byte holds PAC bits; strip if obviously set.
+            if slot_ea > 0xFFFFFFFFFFFF:
+                slot_ea &= 0x7FFFFFFFFFFF
+            if slot_ea:
+                slot_name = ida_name.get_ea_name(slot_ea) or None
+                if slot_name:
+                    cand["target_name"] = slot_name
+                    cand["target_addr"] = f"{slot_ea:#x}"
+        except Exception:
+            pass
+    return cand
 
 
 def _mop_kind_name(mop) -> str:
