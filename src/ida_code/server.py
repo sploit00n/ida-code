@@ -179,7 +179,7 @@ async def execute_file(path: str, args: str | None = None) -> dict:
     return await on_ida_thread(_impl)
 
 
-def _resolve_address(identifier: str) -> int:
+def _resolve_address(identifier: str | int) -> int:
     """Resolve a name or numeric string to an address.
 
     Tries hex (with or without ``0x``), then decimal, then IDA name lookup.
@@ -187,6 +187,8 @@ def _resolve_address(identifier: str) -> int:
     """
     import ida_idaapi
     import ida_name
+
+    if isinstance(identifier, int): return identifier
 
     ea = ida_idaapi.BADADDR
     s = identifier.strip()
@@ -209,7 +211,7 @@ def _resolve_address(identifier: str) -> int:
 
 
 @mcp.tool
-async def decompile(function: str, max_length: int = 10000, offset: int = 0) -> dict:
+async def decompile(function: str | int, max_length: int = 10000, offset: int = 0) -> dict:
     """Decompile a function and return pseudocode. Requires an open database.
 
     *function* can be a name (e.g. "main", "_objc_msgSend") or a hex address
@@ -263,7 +265,7 @@ async def decompile(function: str, max_length: int = 10000, offset: int = 0) -> 
 
 
 @mcp.tool
-async def get_disassembly(start: str, length: int = 0x100) -> dict:
+async def get_disassembly(start: str | int, length: int = 0x100) -> dict:
     """Get disassembly for an address range. Requires an open database.
 
     *start* can be a name (e.g. "main") or address (hex "0x3f08" / "3f08",
@@ -767,7 +769,7 @@ async def set_variable(
 
 
 @mcp.tool
-async def get_comment(address: str, comment_type: CommentTypeOrAll = "") -> dict:
+async def get_comment(address: str | int, comment_type: CommentTypeOrAll = "") -> dict:
     """Get comment(s) at an address. Requires an open database.
 
     *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -792,7 +794,7 @@ async def get_comment(address: str, comment_type: CommentTypeOrAll = "") -> dict
 
 
 @mcp.tool
-async def set_comment(address: str, comment: str, comment_type: CommentType = "regular") -> dict:
+async def set_comment(address: str | int, comment: str, comment_type: CommentType = "regular") -> dict:
     """Set a comment at an address. Requires an open database.
 
     *address* can be a name or hex address.
@@ -811,7 +813,7 @@ async def set_comment(address: str, comment: str, comment_type: CommentType = "r
 
 
 @mcp.tool
-async def delete_comment(address: str, comment_type: CommentType = "regular") -> dict:
+async def delete_comment(address: str | int, comment_type: CommentType = "regular") -> dict:
     """Delete a comment at an address. Requires an open database.
 
     *address* can be a name or hex address.
@@ -829,7 +831,7 @@ async def delete_comment(address: str, comment_type: CommentType = "regular") ->
 
 
 @mcp.tool
-async def rename_function(function: str, new_name: str) -> dict:
+async def rename_function(function: str | int, new_name: str) -> dict:
     """Rename a function. Requires an open database.
 
     *function* can be a name (e.g. "sub_3f08") or hex address (e.g. "0x3f08").
@@ -866,7 +868,7 @@ async def rename_function(function: str, new_name: str) -> dict:
 
 
 @mcp.tool
-async def retype_function(function: str, new_type: str) -> dict:
+async def retype_function(function: str | int, new_type: str) -> dict:
     """Change a function's type signature. Requires an open database.
 
     *function* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -927,7 +929,7 @@ def _xref_type_name(xref_type: int) -> str:
 
 
 @mcp.tool
-async def get_xrefs_to(address: str, max_results: int = 100) -> dict:
+async def get_xrefs_to(address: str | int, max_results: int = 100) -> dict:
     """Get cross-references to an address (who references this?). Requires an open database.
 
     *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
@@ -962,7 +964,7 @@ async def get_xrefs_to(address: str, max_results: int = 100) -> dict:
 
 
 @mcp.tool
-async def get_xrefs_from(address: str, max_results: int = 100) -> dict:
+async def get_xrefs_from(address: str | int, max_results: int = 100) -> dict:
     """Get cross-references from an address (what does this reference?). Requires an open database.
 
     *address* can be a name (e.g. "main") or hex address (e.g. "0x3f08").
