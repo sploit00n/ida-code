@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- `open_database` summary no longer crashes on non-64-bit binaries under IDA 9.x: `ida_ida.inf_is_32bit()` was removed in IDA 9.0, so the bitness check now uses `inf_is_32bit_exactly()` with a fallback to `inf_is_32bit()` for IDA 8.x.
+
 ### Added
 
 - **Indirect-branch tools (Pass 1)** — `list_indirect_branches`, `get_indirect_branch`, `set_indirect_branch`. Enumerate indirect call/jump sites via IDA's CFG (`ida_idp.is_call_insn`, basic-block `fcb_indjump`), then record per-target resolutions as manual code xrefs plus an `@RESOLVED_V1` block in the site's comment. Persistence rides on the `.i64`; resolved targets show up through the existing `get_xrefs_from` tool.

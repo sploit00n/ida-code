@@ -324,7 +324,9 @@ def _collect_summary(path: str) -> dict:
     import idautils
 
     processor = ida_ida.inf_get_procname()
-    bits = 64 if ida_ida.inf_is_64bit() else (32 if ida_ida.inf_is_32bit() else 16)
+    # IDA 9.0 replaced inf_is_32bit() with inf_is_32bit_exactly()/inf_is_32bit_or_higher()
+    is_32bit = getattr(ida_ida, "inf_is_32bit_exactly", None) or ida_ida.inf_is_32bit
+    bits = 64 if ida_ida.inf_is_64bit() else (32 if is_32bit() else 16)
 
     segments = []
     for seg_ea in idautils.Segments():
